@@ -1,0 +1,17 @@
+sources:
+  census_tracts:
+    path: data/raw/census_tracts.geojson
+    id_column: tract_id
+  nta_boundaries:
+    path: data/raw/nta_boundaries.geojson
+    id_column: nta_id
+    name_column: nta_name
+  subway_stops:
+    path: data/raw/subway_stops.csv
+  google_maps_export:
+    path: data/raw/google_maps_saved_places.kml
+  local_property_listings:
+    path: data/raw/property_listings.csv
+    source: local_file
+  streeteasy:
+    search_url: https://streeteasy.com/for-rent/nyc

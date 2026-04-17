@@ -1,0 +1,25 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+.env
+
+# Local data products
+data/raw/*
+data/interim/*
+data/processed/*
+output/*
+
+# Keep directory placeholders
+!data/raw/.gitkeep
+!data/interim/.gitkeep
+!data/processed/.gitkeep
+!output/.gitkeep
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/

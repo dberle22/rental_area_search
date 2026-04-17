@@ -1,0 +1,8 @@
+database_path: data/processed/nyc_property_finder.duckdb
+target_boroughs:
+  - Brooklyn
+  - Manhattan
+default_map_center:
+  lat: 40.7128
+  lon: -74.0060
+default_map_zoom: 10

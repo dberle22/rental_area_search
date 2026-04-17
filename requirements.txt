@@ -1,0 +1,8 @@
+duckdb>=0.10
+geopandas>=0.14
+pandas>=2.0
+pyyaml>=6.0
+shapely>=2.0
+streamlit>=1.33
+pydeck>=0.8
+pytest>=8.0

@@ -1,0 +1,36 @@
+categories:
+  restaurants:
+    - restaurant
+    - diner
+    - pizza
+    - food
+  bars:
+    - bar
+    - brewery
+    - pub
+    - cocktail
+  parks:
+    - park
+    - garden
+    - playground
+  bookstores:
+    - bookstore
+    - books
+  record_stores:
+    - record
+    - vinyl
+  museums:
+    - museum
+    - gallery
+  coffee_shops:
+    - coffee
+    - cafe
+    - espresso
+  groceries:
+    - grocery
+    - market
+    - supermarket
+  shopping:
+    - shop
+    - store
+    - mall
