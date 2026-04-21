@@ -37,7 +37,8 @@ class ResolveReport:
     input_path: str
     resolution_cache_path: str
     parsed_rows: int
-    cache_hits: int
+    input_cache_hits: int
+    existing_resolved_cache_rows: int
     attempted_text_search_calls: int
     max_text_search_calls: int
     resolved: int
@@ -71,6 +72,8 @@ def resolve_place_ids(
     cache = _refresh_cache_source_metadata(cache, parsed)
 
     cached_source_ids = set(cache.loc[cache["google_place_id"] != "", "source_record_id"])
+    parsed_source_ids = set(parsed["source_record_id"])
+    input_cached_source_ids = parsed_source_ids & cached_source_ids
     unresolved = parsed[~parsed["source_record_id"].isin(cached_source_ids)].copy()
 
     if len(unresolved) > max_text_search_calls:
@@ -101,7 +104,8 @@ def resolve_place_ids(
         input_path=str(csv_path),
         resolution_cache_path=str(resolution_cache_path),
         parsed_rows=len(parsed),
-        cache_hits=len(cached_source_ids),
+        input_cache_hits=len(input_cached_source_ids),
+        existing_resolved_cache_rows=len(cached_source_ids),
         attempted_text_search_calls=len(unresolved),
         max_text_search_calls=max_text_search_calls,
         resolved=resolved,

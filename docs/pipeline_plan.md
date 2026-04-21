@@ -124,6 +124,10 @@ PYTHONPATH=src .venv/bin/streamlit run app/streamlit_app_v2.py
 ```
 
 ```bash
+PYTHONPATH=src .venv/bin/streamlit run app/neighborhood_qa_app.py
+```
+
+```bash
 PYTHONPATH=src .venv/bin/streamlit run app/streamlit_app.py
 ```
 

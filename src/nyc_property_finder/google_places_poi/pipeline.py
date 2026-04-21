@@ -16,6 +16,13 @@ from nyc_property_finder.google_places_poi.config import (
 )
 from nyc_property_finder.google_places_poi.enrich import EnrichReport, enrich_place_details
 from nyc_property_finder.google_places_poi.resolve import ResolveReport, resolve_place_ids
+from nyc_property_finder.google_places_poi.summary import (
+    DEFAULT_QA_PATH,
+    DEFAULT_SUMMARY_PATH,
+    build_summary,
+    write_qa_csv,
+    write_summary,
+)
 from nyc_property_finder.services.config import load_config
 from nyc_property_finder.services.duckdb_service import DuckDBService
 
@@ -30,6 +37,9 @@ class GooglePlacesPoiPipelineReport:
     dim_with_coordinates: int
     database_path: str | None
     table_name: str
+    summary_path: str
+    qa_path: str
+    summary: dict[str, Any]
 
     def to_dict(self) -> dict[str, Any]:
         """Return a plain dict for logging, notebooks, or future CLI output."""
@@ -52,6 +62,8 @@ def run(
     write_database: bool = True,
     table_name: str = "dim_user_poi_v2",
     schema: str = "property_explorer_gold",
+    summary_path: str | Path = DEFAULT_SUMMARY_PATH,
+    qa_path: str | Path = DEFAULT_QA_PATH,
 ) -> GooglePlacesPoiPipelineReport:
     """Resolve, enrich, build, and optionally write dim_user_poi_v2."""
 
@@ -88,6 +100,17 @@ def run(
                 if_exists="replace",
             )
 
+    summary = build_summary(
+        resolution_cache_path=resolution_cache_path,
+        details_cache_path=details_cache_path,
+    )
+    write_summary(summary, summary_path)
+    write_qa_csv(
+        resolution_cache_path=resolution_cache_path,
+        details_cache_path=details_cache_path,
+        path=qa_path,
+    )
+
     return GooglePlacesPoiPipelineReport(
         resolve=resolve_report,
         enrich=enrich_report,
@@ -95,4 +118,7 @@ def run(
         dim_with_coordinates=int(dim_user_poi[["lat", "lon"]].notna().all(axis=1).sum()),
         database_path=resolved_database_path,
         table_name=f"{schema}.{table_name}",
+        summary_path=str(summary_path),
+        qa_path=str(qa_path),
+        summary=summary,
     )

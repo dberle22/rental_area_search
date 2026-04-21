@@ -111,6 +111,16 @@ tract geometry, tract-to-NTA mapping, tract features, and NTA features.
 PYTHONPATH=src .venv/bin/streamlit run app/streamlit_app_v2.py
 ```
 
+### Neighborhood Data QA
+
+Neighborhood Data QA is the coverage and source-readiness companion app for the
+neighborhood foundation. Use it to inspect metric coverage, expected gold-table
+row counts, and configured source paths.
+
+```bash
+PYTHONPATH=src .venv/bin/streamlit run app/neighborhood_qa_app.py
+```
+
 ### Property Explorer
 
 Property Explorer is the listing review app. It reads property context, POIs,

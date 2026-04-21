@@ -23,6 +23,7 @@ from nyc_property_finder.google_places_poi.parse_takeout import (
 )
 from nyc_property_finder.google_places_poi.pipeline import run as run_google_places_poi
 from nyc_property_finder.google_places_poi.resolve import resolve_place_ids
+from nyc_property_finder.google_places_poi.summary import build_summary
 from nyc_property_finder.services.duckdb_service import DuckDBService
 
 
@@ -284,7 +285,8 @@ def test_resolve_place_ids_writes_cache_and_respects_existing_hits(tmp_path) -> 
     cache = read_resolution_cache(resolution_cache_path)
 
     assert calls == [("Books Are Magic New York, NY", "secret")]
-    assert report.cache_hits == 1
+    assert report.input_cache_hits == 1
+    assert report.existing_resolved_cache_rows == 1
     assert report.attempted_text_search_calls == 1
     assert report.resolved == 1
     assert set(cache["google_place_id"]) == {"places/ursula", "places/booksaremagic"}
@@ -433,6 +435,8 @@ def test_pipeline_writes_dim_user_poi_v2(tmp_path) -> None:
         encoding="utf-8",
     )
     database_path = tmp_path / "nyc_property_finder.duckdb"
+    summary_path = tmp_path / "place_pipeline_summary.json"
+    qa_path = tmp_path / "place_pipeline_qa.csv"
 
     def resolve_fetcher(query: str, api_key: str):
         return {"google_place_id": "places/ursula", "match_status": "top_candidate"}
@@ -469,6 +473,8 @@ def test_pipeline_writes_dim_user_poi_v2(tmp_path) -> None:
         max_text_search_calls=0,
         max_details_calls=0,
         api_key="secret",
+        summary_path=summary_path,
+        qa_path=qa_path,
     )
 
     with DuckDBService(database_path, read_only=True) as duckdb_service:
@@ -476,4 +482,49 @@ def test_pipeline_writes_dim_user_poi_v2(tmp_path) -> None:
 
     assert report.dim_rows == 1
     assert report.dim_with_coordinates == 1
+    assert report.summary_path == str(summary_path)
+    assert report.qa_path == str(qa_path)
+    assert summary_path.exists()
+    assert qa_path.exists()
     assert rows.iloc[0]["name"] == "Ursula Bookshop"
+
+
+def test_build_summary_flags_duplicate_place_ids(tmp_path) -> None:
+    resolution_cache_path = tmp_path / "place_resolution_cache.csv"
+    resolution_cache_path.write_text(
+        "\n".join(
+            [
+                "source_record_id,source_system,source_file,source_list_name,category,input_title,note,tags,comment,source_url,search_query,google_place_id,match_status",
+                "src_1,google_maps_takeout,Bookstores.csv,Bookstores,bookstores,Book Club,,,,url,query,places/bookclub,top_candidate",
+                "src_2,google_maps_takeout,Bookstores.csv,Bookstores,bookstores,Bluestockings,,,,url,query,places/bookclub,top_candidate",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    details_cache_path = tmp_path / "place_details_cache.jsonl"
+    details_cache_path.write_text(
+        json.dumps(
+            {
+                "google_place_id": "places/bookclub",
+                "fetched_at": "2026-04-20T00:00:00+00:00",
+                "payload": {
+                    "displayName": {"text": "Book Club Bar"},
+                    "formattedAddress": "197 E 3rd St, New York, NY",
+                    "location": {"latitude": 40.723, "longitude": -73.983},
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    summary = build_summary(
+        resolution_cache_path=resolution_cache_path,
+        details_cache_path=details_cache_path,
+    )
+
+    assert summary["source_rows"] == 2
+    assert summary["unique_google_place_ids"] == 1
+    assert summary["duplicate_place_groups"] == 1
+    assert summary["duplicate_source_rows"] == 2
+    assert summary["missing_coordinate_rows"] == 0

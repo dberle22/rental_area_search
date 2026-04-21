@@ -5,7 +5,12 @@ from shapely.geometry import Polygon
 from nyc_property_finder.app.base_map import (
     TARGET_COUNTY_GEOIDS,
     add_metric_display_columns,
+    available_poi_source_lists,
+    build_base_map_deck,
+    filter_poi_points_by_source_lists,
     format_metric_value,
+    load_poi_map_data,
+    prepare_poi_points,
     prepare_base_map_data,
 )
 from nyc_property_finder.services.duckdb_service import DuckDBService
@@ -161,3 +166,150 @@ def test_prepare_base_map_data_filters_to_target_boroughs_and_joins_metrics(tmp_
     assert map_data.stats["neighborhood_count"] == 2
     assert map_data.stats["metric_non_null_count"] == 2
     assert map_data.tracts["median_income"].tolist() == [100000, 150000]
+    assert map_data.neighborhoods["median_income_display"].tolist() == ["$100,000", "$150,000"]
+    assert map_data.neighborhoods["pct_bachelors_plus_display"].tolist() == ["50.0%", "70.0%"]
+
+
+def test_build_base_map_deck_can_hide_demographic_fill(tmp_path) -> None:
+    database_path = tmp_path / "app.duckdb"
+    tract_path = tmp_path / "tracts.geojson"
+    _write_tract_fixture(tract_path)
+    _write_gold_fixtures(database_path)
+    map_data = prepare_base_map_data(database_path, tract_path, metric="median_income")
+
+    with_demographics = build_base_map_deck(map_data, layer_mode="Tracts", show_demographics=True)
+    without_demographics = build_base_map_deck(
+        map_data,
+        layer_mode="Tracts",
+        show_demographics=False,
+    )
+
+    assert [layer.id for layer in with_demographics.layers] == [
+        "demographic-fill",
+        "nta-boundaries",
+    ]
+    assert [layer.id for layer in without_demographics.layers] == ["nta-boundaries"]
+    assert with_demographics.layers[-1].pickable is False
+    assert with_demographics.layers[-1].filled is False
+    assert without_demographics.layers[0].pickable is True
+    assert without_demographics.layers[0].filled is True
+    assert without_demographics._tooltip["html"] == "{tooltip_html}"
+    assert with_demographics._tooltip["html"] == "{tooltip_html}"
+    assert "Median household income: $100,000" in (
+        without_demographics.layers[0].data[0]["nta_summary_tooltip"]
+    )
+    assert "Median household income: $100,000" in (
+        without_demographics.layers[0].data[0]["tooltip_html"]
+    )
+    assert "Median household income: $100,000" in (
+        with_demographics.layers[0].data[0]["selected_metric_tooltip"]
+    )
+
+
+def test_prepare_poi_points_supports_source_list_filtering() -> None:
+    poi = pd.DataFrame(
+        [
+            {
+                "poi_id": "poi_1",
+                "source_list_names": '["Bookstores", "Favorites"]',
+                "categories": '["bookstores"]',
+                "primary_category": "bookstores",
+                "name": "Ursula Bookshop",
+                "address": "1016 Union St, Brooklyn, NY",
+                "lat": 40.674,
+                "lon": -73.963,
+            },
+            {
+                "poi_id": "poi_2",
+                "source_list_names": '["Museums"]',
+                "categories": '["museums"]',
+                "primary_category": "museums",
+                "name": "Brooklyn Museum",
+                "address": "200 Eastern Pkwy, Brooklyn, NY",
+                "lat": 40.671,
+                "lon": -73.964,
+            },
+        ]
+    )
+
+    points = prepare_poi_points(poi)
+    filtered = filter_poi_points_by_source_lists(points, ("Favorites",))
+
+    assert available_poi_source_lists(points) == ["Bookstores", "Favorites", "Museums"]
+    assert filtered["name"].tolist() == ["Ursula Bookshop"]
+    assert "List: Bookstores, Favorites" in filtered.iloc[0]["tooltip_html"]
+    assert "Type: Bookstores" in filtered.iloc[0]["tooltip_html"]
+
+
+def test_build_base_map_deck_adds_poi_layer_when_enabled(tmp_path) -> None:
+    database_path = tmp_path / "app.duckdb"
+    tract_path = tmp_path / "tracts.geojson"
+    _write_tract_fixture(tract_path)
+    _write_gold_fixtures(database_path)
+    map_data = prepare_base_map_data(database_path, tract_path, metric="median_income")
+    poi_points = prepare_poi_points(
+        pd.DataFrame(
+            [
+                {
+                    "poi_id": "poi_1",
+                    "source_list_names": '["Bookstores"]',
+                    "categories": '["bookstores"]',
+                    "primary_category": "bookstores",
+                    "name": "Ursula Bookshop",
+                    "address": "1016 Union St, Brooklyn, NY",
+                    "lat": 40.674,
+                    "lon": -73.963,
+                }
+            ]
+        )
+    )
+
+    deck = build_base_map_deck(map_data, poi_points=poi_points, show_pois=True)
+
+    assert [layer.id for layer in deck.layers] == [
+        "demographic-fill",
+        "nta-boundaries",
+        "poi-points",
+    ]
+    assert deck.layers[-1].pickable is True
+    assert deck.layers[-1].data[0]["name"] == "Ursula Bookshop"
+
+
+def test_load_poi_map_data_prefers_v2_table(tmp_path) -> None:
+    database_path = tmp_path / "app.duckdb"
+    poi = pd.DataFrame(
+        [
+            {
+                "poi_id": "poi_1",
+                "source_system": "google_places",
+                "source_record_id": '["src_1"]',
+                "source_list_names": '["Bookstores"]',
+                "categories": '["bookstores"]',
+                "primary_category": "bookstores",
+                "name": "Ursula Bookshop",
+                "input_title": "Ursula",
+                "note": "[]",
+                "tags": "[]",
+                "comment": "[]",
+                "source_url": "[]",
+                "google_place_id": "places/ursula",
+                "match_status": "top_candidate",
+                "address": "1016 Union St, Brooklyn, NY",
+                "lat": 40.674,
+                "lon": -73.963,
+                "details_fetched_at": "2026-04-20T00:00:00+00:00",
+            }
+        ]
+    )
+    with DuckDBService(database_path) as duckdb_service:
+        duckdb_service.write_dataframe(
+            poi,
+            "dim_user_poi_v2",
+            schema="property_explorer_gold",
+        )
+
+    poi_data = load_poi_map_data(database_path)
+
+    assert poi_data.source == "duckdb_v2"
+    assert poi_data.stats == {"poi_count": 1, "source_list_count": 1}
+    assert poi_data.points.iloc[0]["primary_source_list"] == "Bookstores"

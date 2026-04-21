@@ -59,11 +59,13 @@ The current Streamlit surface has two app layers:
 | App | Code | Required data | Current purpose |
 | --- | --- | --- | --- |
 | Neighborhood Explorer | `app/streamlit_app_v2.py`, `src/nyc_property_finder/app/base_map.py` | `dim_tract_to_nta`, `fct_tract_features`, `fct_nta_features`, and `data/raw/geography/census_tracts.geojson` | Reusable Brooklyn/Manhattan tract and neighborhood map with demographic metric selection. |
+| Neighborhood Data QA | `app/neighborhood_qa_app.py`, `src/nyc_property_finder/app/neighborhood_qa.py` | `dim_tract_to_nta`, `fct_tract_features`, `fct_nta_features`, configured source paths | QA surface for table readiness, metric coverage, and source-path status. |
 | Property Explorer | `app/streamlit_app.py`, `src/nyc_property_finder/app/explorer.py` | `fct_property_context`, `dim_user_poi`, `dim_subway_stop`, `fct_nta_features`, `fct_user_shortlist` | Listing map/list/detail workflow, score filters, POI/subway overlays, and local shortlist persistence. |
 
 Neighborhood Explorer is intentionally foundation-first: it can render boundaries
-even when demographic metric values are null, and it reports metric coverage so
-missing Metro Deep Dive values are visible during QA.
+even when demographic metric values are null. Neighborhood Data QA owns metric
+coverage and source-readiness review so missing Metro Deep Dive values are
+visible outside the main exploration surface.
 
 ## Contract And DDL Change Checklist
 
@@ -95,10 +97,11 @@ the following in the same workstream:
 | `dim_subway_stop` | This doc, transit source notes | `sql/ddl/001_gold_tables.sql` | `ingest_subway_stops.py`, transit transforms | Stop IDs unique; stop name present; coordinates in NYC bounds; GTFS route lines preserved enough for display/counts. | `tests/test_subway_ingestion.py`, `tests/test_schema.py` |
 | `dim_user_poi` | This doc, POI source notes | `sql/ddl/001_gold_tables.sql` | `ingest_google_maps.py`, POI transforms, geocoding service | POI IDs stable; names present; categories normalized with `other` fallback; private exports stay local; geocode misses quarantined. | `tests/test_poi_parsing.py`, `tests/test_geosearch.py`, `tests/test_schema.py` |
 | `fct_tract_features` | This doc, Metro Deep Dive source notes | `sql/ddl/001_gold_tables.sql` | `build_neighborhood_features.py`, `sql/gold/fct_tract_features.sql` | Tract IDs join to mapping; percent scale documented; null metrics are explicit and do not produce precise-looking scores. | `tests/test_neighborhood_features.py`, `tests/test_base_map_app.py`, `tests/test_schema.py` |
-| `fct_nta_features` | This doc, Metro Deep Dive source notes | `sql/ddl/001_gold_tables.sql` | `build_neighborhood_features.py`, `sql/gold/fct_nta_features.sql` | One row per NTA; aggregation method documented; names present; null metric coverage visible in Neighborhood Explorer. | `tests/test_neighborhood_features.py`, `tests/test_base_map_app.py`, `tests/test_schema.py` |
+| `fct_nta_features` | This doc, Metro Deep Dive source notes | `sql/ddl/001_gold_tables.sql` | `build_neighborhood_features.py`, `sql/gold/fct_nta_features.sql` | One row per NTA; aggregation method documented; names present; null metric coverage visible in Neighborhood Data QA. | `tests/test_neighborhood_features.py`, `tests/test_base_map_app.py`, `tests/test_schema.py` |
 | `fct_property_context` | This doc, scoring config | `sql/ddl/001_gold_tables.sql` | `build_property_context.py`, scoring transforms | Context row count matches listings; tract/NTA joins valid; subway distance non-negative; POI JSON valid; scores are null for documented reasons or `0-100`. | `tests/test_property_context_pipeline.py`, `tests/test_property_explorer_app.py`, `tests/test_schema.py` |
 | `fct_user_shortlist` | This doc, app helper contract | `sql/ddl/001_gold_tables.sql` | `src/nyc_property_finder/app/explorer.py`, Streamlit actions | One current row per `user_id`/`property_id`; controlled status values; rebuilds do not replace user-authored rows. | `tests/test_property_explorer_app.py`, `tests/test_schema.py` |
-| Neighborhood Explorer app artifact | `docs/app/neighborhood_explorer_app.md`, this doc | N/A | `app/streamlit_app_v2.py`, `src/nyc_property_finder/app/base_map.py` | Boundaries render with or without metric values; metric coverage is visible; Brooklyn/Manhattan filtering works. | `tests/test_base_map_app.py` |
+| Neighborhood Explorer app artifact | `docs/app/neighborhood_explorer_app.md`, this doc | N/A | `app/streamlit_app_v2.py`, `src/nyc_property_finder/app/base_map.py` | Boundaries render with or without metric values; Brooklyn/Manhattan filtering works. | `tests/test_base_map_app.py` |
+| Neighborhood Data QA app artifact | `docs/app/neighborhood_explorer_app.md`, this doc | N/A | `app/neighborhood_qa_app.py`, `src/nyc_property_finder/app/neighborhood_qa.py` | Table readiness, metric coverage, and configured source-path status are visible outside the explorer. | `tests/test_neighborhood_qa.py` |
 
 ## MVP Table Status
 

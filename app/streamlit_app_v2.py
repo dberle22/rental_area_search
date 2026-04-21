@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pandas as pd
 import streamlit as st
 
 from nyc_property_finder.app.base_map import (
     DEMOGRAPHIC_METRICS,
     BaseMapData,
+    PoiMapData,
+    available_poi_source_lists,
     build_base_map_deck,
+    filter_poi_points_by_source_lists,
     format_metric_value,
+    load_poi_map_data,
     metric_options,
     prepare_base_map_data,
 )
@@ -38,39 +40,11 @@ def cached_prepare_base_map_data(
     )
 
 
-def _coverage_label(value: float) -> str:
-    return f"{value:.1%}"
+@st.cache_data(show_spinner="Loading points of interest...")
+def cached_load_poi_map_data(database_path: str) -> PoiMapData:
+    """Cached wrapper around POI map-layer assembly."""
 
-
-def _render_data_status(database_path: str, tract_path: str, stats: dict[str, object]) -> None:
-    with st.sidebar:
-        st.header("Data")
-        st.caption(f"Database: `{database_path}`")
-        st.caption(f"Tracts: `{tract_path}`")
-        st.write(f"Mapping: {'ready' if stats.get('mapping_ready') else 'missing'}")
-        st.write(f"Tract features: {'ready' if stats.get('tract_features_ready') else 'missing'}")
-        st.write(f"NTA features: {'ready' if stats.get('nta_features_ready') else 'missing'}")
-
-        if not Path(database_path).exists():
-            st.error("Database file is missing. Build the gold tables before using this app.")
-        if not Path(tract_path).exists():
-            st.error("Census tract GeoJSON is missing.")
-
-
-def _render_summary(map_data: BaseMapData) -> None:
-    stats = map_data.stats
-    metric_cols = st.columns(4)
-    metric_cols[0].metric("Tracts", f"{stats['tract_count']:,}")
-    metric_cols[1].metric("Neighborhoods", f"{stats['neighborhood_count']:,}")
-    metric_cols[2].metric("Metric rows", f"{stats['metric_non_null_count']:,}")
-    metric_cols[3].metric("Metric coverage", _coverage_label(float(stats["metric_coverage"])))
-
-    if stats["metric_non_null_count"] == 0:
-        st.warning(
-            "The geography foundation is loaded, but the current local demographic feature "
-            "tables have no populated values for this metric. Rebuild the Metro Deep Dive "
-            "feature tables to turn the map from boundary review into demographic review."
-        )
+    return load_poi_map_data(database_path=database_path)
 
 
 def _render_selected_metric_table(map_data: BaseMapData, layer_mode: str) -> None:
@@ -111,7 +85,7 @@ def main() -> None:
 
     st.title("Neighborhood Explorer")
     st.caption(
-        "Reusable Brooklyn and Manhattan tract/neighborhood context before property-layer work."
+        "Explore Brooklyn and Manhattan neighborhood demographics before property-layer work."
     )
 
     with st.sidebar:
@@ -124,10 +98,11 @@ def main() -> None:
         )
         metric = next(key for key, label in metric_labels.items() if label == selected_label)
         layer_mode = st.segmented_control(
-            "Geography",
+            "Demographic geography",
             ["Tracts", "Neighborhoods"],
             default="Tracts",
         )
+        show_demographics = st.toggle("Show demographic colors", value=True)
 
     map_data = cached_prepare_base_map_data(
         database_path=database_path,
@@ -135,13 +110,35 @@ def main() -> None:
         tract_id_col=tract_id_col,
         metric=metric,
     )
-    _render_data_status(database_path, tract_path, map_data.stats)
-    _render_summary(map_data)
+    poi_data = cached_load_poi_map_data(database_path)
+    poi_source_lists = available_poi_source_lists(poi_data.points)
+
+    with st.sidebar:
+        st.header("Points of interest")
+        show_pois = st.toggle("Show POIs", value=not poi_data.points.empty)
+        selected_poi_source_lists = st.multiselect(
+            "POI type",
+            poi_source_lists,
+            default=poi_source_lists,
+            disabled=not show_pois or poi_data.points.empty,
+        )
+        if poi_data.points.empty:
+            st.caption("No POIs with coordinates are available yet.")
+        elif show_pois:
+            st.caption(f"{len(poi_data.points):,} POIs loaded from {poi_data.source}.")
+
+    filtered_poi_points = filter_poi_points_by_source_lists(
+        poi_data.points,
+        tuple(selected_poi_source_lists),
+    )
 
     st.pydeck_chart(
         build_base_map_deck(
             map_data,
             layer_mode=layer_mode,
+            show_demographics=show_demographics,
+            poi_points=filtered_poi_points,
+            show_pois=show_pois,
             center_lat=float(center["lat"]),
             center_lon=float(center["lon"]),
             zoom=int(settings.get("default_map_zoom", 10)),
@@ -149,7 +146,17 @@ def main() -> None:
         use_container_width=True,
     )
 
-    st.subheader(f"{layer_mode} by {metric_labels[metric]}")
+    if show_pois and not poi_data.points.empty:
+        st.caption(
+            f"Showing {len(filtered_poi_points):,} of {len(poi_data.points):,} POIs "
+            "for the selected type filters."
+        )
+
+    if show_demographics:
+        st.subheader(f"{layer_mode} by {metric_labels[metric]}")
+    else:
+        st.subheader(f"{layer_mode} data table ({metric_labels[metric]})")
+        st.caption("Demographic map colors are hidden; NTA boundaries remain visible.")
     _render_selected_metric_table(map_data, layer_mode)
 
 
