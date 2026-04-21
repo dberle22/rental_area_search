@@ -23,7 +23,7 @@ def write_property_listings(
     listings: pd.DataFrame,
     duckdb_service: DuckDBService,
     table_name: str = "dim_property_listing",
-    schema: str = "gold",
+    schema: str = "property_explorer_gold",
 ) -> None:
     """Persist normalized property listings."""
 

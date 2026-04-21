@@ -1,5 +1,6 @@
 import pandas as pd
 import pytest
+from zipfile import ZipFile
 
 from nyc_property_finder.pipelines.ingest_subway_stops import ingest_subway_stops, run
 from nyc_property_finder.services.duckdb_service import DuckDBService
@@ -42,7 +43,31 @@ def test_run_writes_subway_stops_to_duckdb(tmp_path) -> None:
     run(path=stops_path, database_path=database_path)
 
     with DuckDBService(database_path, read_only=True) as duckdb_service:
-        stops = duckdb_service.query_df("SELECT * FROM gold.dim_subway_stop")
+        stops = duckdb_service.query_df("SELECT * FROM property_explorer_gold.dim_subway_stop")
 
     assert len(stops) == 1
     assert stops.iloc[0]["stop_name"] == "Main St"
+
+
+def test_ingest_subway_stops_normalizes_gtfs_zip(tmp_path) -> None:
+    gtfs_path = tmp_path / "gtfs_subway.zip"
+    with ZipFile(gtfs_path, "w") as gtfs:
+        gtfs.writestr(
+            "stops.txt",
+            "\n".join(
+                [
+                    "stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station",
+                    "A01,Main St,40.7,-73.9,1,",
+                    "A01N,Main St Northbound,40.7001,-73.9001,0,A01",
+                ]
+            ),
+        )
+        gtfs.writestr("trips.txt", "route_id,trip_id\nA,trip_a\nC,trip_c\n")
+        gtfs.writestr("stop_times.txt", "trip_id,stop_id\ntrip_a,A01N\ntrip_c,A01N\n")
+
+    stops = ingest_subway_stops(gtfs_path)
+
+    assert len(stops) == 1
+    assert stops.iloc[0]["subway_stop_id"] == "A01"
+    assert stops.iloc[0]["stop_name"] == "Main St"
+    assert stops.iloc[0]["lines"] == "A C"

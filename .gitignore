@@ -7,6 +7,9 @@ __pycache__/
 venv/
 .env
 
+# Local machine-specific source paths
+config/data_sources.yaml
+
 # Local data products
 data/raw/*
 data/interim/*
@@ -23,3 +26,6 @@ output/*
 .DS_Store
 .idea/
 .vscode/
+
+# API Keys
+config/api_keys.yaml

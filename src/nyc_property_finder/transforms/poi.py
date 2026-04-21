@@ -7,6 +7,7 @@ import re
 import xml.etree.ElementTree as ET
 from hashlib import sha256
 from pathlib import Path
+from urllib.parse import unquote
 
 import pandas as pd
 
@@ -15,6 +16,8 @@ DEFAULT_CATEGORY_KEYWORDS = {
     "restaurants": ["restaurant", "diner", "pizza", "food"],
     "bars": ["bar", "brewery", "pub", "cocktail"],
     "parks": ["park", "garden", "playground"],
+    "bookstores": ["bookstore", "books"],
+    "record_stores": ["record", "vinyl"],
     "coffee_shops": ["coffee", "cafe", "espresso"],
     "groceries": ["grocery", "market", "supermarket"],
     "museums": ["museum", "gallery"],
@@ -31,6 +34,41 @@ def normalize_category(name: str, category_keywords: dict[str, list[str]] | None
         if any(keyword in clean_name for keyword in keywords):
             return category
     return "other"
+
+
+def category_from_list_name(list_name: str, category_keywords: dict[str, list[str]] | None = None) -> str:
+    """Map a Google Maps list name into a coarse POI category."""
+
+    clean_name = list_name.lower().replace("new york - ", "").replace("nyc", "")
+    category_keywords = category_keywords or DEFAULT_CATEGORY_KEYWORDS
+    for category in category_keywords:
+        if category.replace("_", " ") in clean_name:
+            return category
+    return normalize_category(clean_name, category_keywords=category_keywords)
+
+
+def parse_google_maps_csv(path: str | Path) -> pd.DataFrame:
+    """Parse a Google Maps saved-list CSV with title/link records."""
+
+    path = Path(path)
+    rows = pd.read_csv(path, comment=None, skip_blank_lines=True)
+    if "Title" not in rows.columns:
+        rows = pd.read_csv(path, skiprows=1, skip_blank_lines=True)
+
+    if "Title" not in rows.columns:
+        raise ValueError(f"Google Maps CSV missing Title column: {path}")
+
+    source_list_name = path.stem
+    output = rows.rename(columns={"Title": "name", "URL": "url", "Note": "note"}).copy()
+    output["source_list_name"] = source_list_name
+    output["name"] = output["name"].fillna("").astype(str).str.strip()
+    output = output[output["name"] != ""].copy()
+    if "url" not in output.columns:
+        output["url"] = ""
+    output["url"] = output["url"].fillna("").astype(str).map(unquote)
+    output["lat"] = pd.NA
+    output["lon"] = pd.NA
+    return output[["name", "source_list_name", "url", "lat", "lon"]]
 
 
 def parse_google_maps_json(path: str | Path) -> pd.DataFrame:
@@ -95,10 +133,17 @@ def normalize_poi_dataframe(
 
     output = dataframe.copy()
     output["name"] = output["name"].fillna("").astype(str).str.strip()
+    output["source_list_name"] = output.get("source_list_name", "google_maps")
+    output["source_list_name"] = output["source_list_name"].fillna("google_maps").astype(str).str.strip()
     output["lat"] = pd.to_numeric(output["lat"], errors="coerce")
     output["lon"] = pd.to_numeric(output["lon"], errors="coerce")
     output = output.dropna(subset=["lat", "lon"])
-    output["category"] = output["name"].apply(lambda value: normalize_category(value, category_keywords))
+    output["category"] = output.apply(
+        lambda row: category_from_list_name(row["source_list_name"], category_keywords)
+        if category_from_list_name(row["source_list_name"], category_keywords) != "other"
+        else normalize_category(row["name"], category_keywords),
+        axis=1,
+    )
     output["poi_id"] = output.apply(
         lambda row: _stable_poi_id(row["name"], row["lat"], row["lon"]),
         axis=1,

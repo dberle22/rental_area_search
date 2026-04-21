@@ -18,9 +18,29 @@ PROPERTY_COLUMNS = [
     "beds",
     "baths",
     "listing_type",
+    "active",
     "url",
     "ingest_timestamp",
 ]
+
+
+LISTING_TYPE_ALIASES = {
+    "rent": "rental",
+    "rental": "rental",
+    "lease": "rental",
+    "sale": "sale",
+    "sales": "sale",
+    "buy": "sale",
+}
+
+
+def normalize_listing_type(value: object) -> str:
+    """Normalize source listing type values into the Property Explorer contract."""
+
+    if pd.isna(value):
+        return "rental"
+    normalized = str(value).strip().lower()
+    return LISTING_TYPE_ALIASES.get(normalized, normalized)
 
 
 def normalize_property_listings(dataframe: pd.DataFrame, source: str) -> pd.DataFrame:
@@ -36,6 +56,8 @@ def normalize_property_listings(dataframe: pd.DataFrame, source: str) -> pd.Data
     output["lat"] = pd.to_numeric(output.get("lat"), errors="coerce")
     output["lon"] = pd.to_numeric(output.get("lon"), errors="coerce")
     output["listing_type"] = output.get("listing_type", "rental")
+    output["listing_type"] = output["listing_type"].map(normalize_listing_type)
+    output["active"] = output.get("active", True)
     output["url"] = output.get("url", "")
     output["ingest_timestamp"] = pd.Timestamp.now(tz="UTC")
     output["property_id"] = output.apply(

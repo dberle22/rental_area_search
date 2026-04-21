@@ -1,4 +1,6 @@
 database_path: data/processed/nyc_property_finder.duckdb
+local_user:
+  default_user_id: local_default
 target_boroughs:
   - Brooklyn
   - Manhattan

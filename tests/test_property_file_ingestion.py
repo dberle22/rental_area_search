@@ -18,7 +18,7 @@ def test_ingest_property_file_normalizes_and_deduplicates_csv(tmp_path) -> None:
                 "price": "3500",
                 "beds": "1",
                 "baths": "1",
-                "listing_type": "rental",
+                "listing_type": "rent",
                 "url": "https://example.com/abc",
             },
             {
@@ -40,6 +40,8 @@ def test_ingest_property_file_normalizes_and_deduplicates_csv(tmp_path) -> None:
     assert len(listings) == 1
     assert listings.iloc[0]["source"] == "fixture"
     assert listings.iloc[0]["price"] == 3600
+    assert listings.iloc[0]["listing_type"] == "rental"
+    assert listings.iloc[0]["active"] is True or listings.iloc[0]["active"] == 1
     assert listings.iloc[0]["property_id"].startswith("prop_")
 
 
@@ -47,7 +49,7 @@ def test_ingest_property_file_requires_minimum_columns(tmp_path) -> None:
     listing_path = tmp_path / "listings.csv"
     pd.DataFrame([{"address": "1 Main St", "price": 3500}]).to_csv(listing_path, index=False)
 
-    with pytest.raises(ValueError, match="Missing required listing columns"):
+    with pytest.raises(ValueError, match="lat/lon columns"):
         ingest_property_file(listing_path)
 
 
@@ -70,7 +72,7 @@ def test_run_writes_property_listings_to_duckdb(tmp_path) -> None:
     run(path=listing_path, database_path=database_path, source="fixture")
 
     with DuckDBService(database_path, read_only=True) as duckdb_service:
-        listings = duckdb_service.query_df("SELECT * FROM gold.dim_property_listing")
+        listings = duckdb_service.query_df("SELECT * FROM property_explorer_gold.dim_property_listing")
 
     assert len(listings) == 1
     assert listings.iloc[0]["source_listing_id"] == "abc"

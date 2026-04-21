@@ -33,3 +33,42 @@ def test_ingest_google_maps_json_parses_and_normalizes(tmp_path) -> None:
     assert poi.iloc[0]["category"] == "coffee_shops"
     assert poi.iloc[0]["source_list_name"] == "Favorites"
     assert poi.iloc[0]["poi_id"].startswith("poi_")
+
+
+def test_ingest_google_maps_csv_geocodes_and_uses_list_category(tmp_path) -> None:
+    export_path = tmp_path / "New York - Bookstores.csv"
+    export_path.write_text(
+        "\n".join(
+            [
+                "Title,Note,URL,Tags,Comment",
+                ",,,,",
+                "Ursula Bookshop,,https://www.google.com/maps/place/Ursula+Bookshop/data=!4m2!3m1!1sabc,,",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    def fetcher(query: str):
+        assert query == "Ursula Bookshop New York, NY"
+        return {
+            "matched_address": "Ursula Bookshop, Brooklyn",
+            "lat": 40.686,
+            "lon": -73.986,
+            "geocode_source": "nyc_geosearch",
+            "coordinate_quality": "geocoded",
+            "status": "matched",
+            "error": "",
+        }
+
+    poi = ingest_google_maps(
+        export_path,
+        geocode_cache_path=tmp_path / "poi_geocodes.csv",
+        geocode_quarantine_path=tmp_path / "poi_quarantine.csv",
+        geocode_fetcher=fetcher,
+    )
+
+    assert len(poi) == 1
+    assert poi.iloc[0]["name"] == "Ursula Bookshop"
+    assert poi.iloc[0]["source_list_name"] == "New York - Bookstores"
+    assert poi.iloc[0]["category"] == "bookstores"
+    assert poi.iloc[0]["lat"] == 40.686

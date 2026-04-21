@@ -31,9 +31,12 @@ def load_config(config_dir: str | Path = DEFAULT_CONFIG_DIR) -> dict[str, Any]:
     """Load all starter config files into one dictionary."""
 
     config_dir = Path(config_dir)
+    data_sources_path = config_dir / "data_sources.yaml"
+    if not data_sources_path.exists():
+        data_sources_path = config_dir / "data_sources.example.yaml"
     return {
         "settings": load_yaml(config_dir / "settings.yaml"),
-        "data_sources": load_yaml(config_dir / "data_sources.yaml"),
+        "data_sources": load_yaml(data_sources_path),
         "poi_categories": load_yaml(config_dir / "poi_categories.yaml"),
         "scoring_weights": load_yaml(config_dir / "scoring_weights.yaml"),
     }
