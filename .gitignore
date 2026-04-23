@@ -18,6 +18,12 @@ output/*
 
 # Keep directory placeholders
 !data/raw/.gitkeep
+!data/raw/public_poi/
+data/raw/public_poi/**
+!data/raw/public_poi/**/
+!data/raw/public_poi/**/.gitkeep
+!data/raw/public_poi/ferry_path/terminals.csv
+!data/raw/public_poi/nyc_open_data/qpl_branches.csv
 !data/interim/.gitkeep
 !data/processed/.gitkeep
 !output/.gitkeep

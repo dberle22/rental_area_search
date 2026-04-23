@@ -20,6 +20,7 @@ def test_initialize_database_creates_expected_property_explorer_gold_tables(tmp_
 
     assert tables == [
         "dim_property_listing",
+        "dim_public_poi",
         "dim_subway_stop",
         "dim_tract_to_nta",
         "dim_user_poi",
@@ -46,7 +47,7 @@ def test_initialize_database_is_idempotent(tmp_path) -> None:
             """
         )["table_count"].iloc[0]
 
-    assert table_count == 9
+    assert table_count == 10
 
 
 def test_user_poi_v2_schema_is_source_aware(tmp_path) -> None:
@@ -84,6 +85,37 @@ def test_user_poi_v2_schema_is_source_aware(tmp_path) -> None:
         "lat",
         "lon",
         "details_fetched_at",
+    ]
+
+
+def test_public_poi_schema_matches_wave_contract(tmp_path) -> None:
+    database_path = tmp_path / "nyc_property_finder.duckdb"
+
+    initialize_database(database_path)
+
+    with DuckDBService(database_path, read_only=True) as duckdb_service:
+        columns = duckdb_service.query_df(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'property_explorer_gold'
+              AND table_name = 'dim_public_poi'
+            ORDER BY ordinal_position
+            """
+        )["column_name"].tolist()
+
+    assert columns == [
+        "poi_id",
+        "source_system",
+        "source_id",
+        "category",
+        "subcategory",
+        "name",
+        "address",
+        "lat",
+        "lon",
+        "attributes",
+        "snapshotted_at",
     ]
 
 

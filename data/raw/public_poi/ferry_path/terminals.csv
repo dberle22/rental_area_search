@@ -1,0 +1,23 @@
+source_id,category,name,address,lat,lon,notes
+nycf_pier_11_wall_st,ferry_terminal,Pier 11 / Wall St,"Gouverneur Ln at South St, New York, NY",40.7033,-74.0069,NYC Ferry terminal
+nycf_east_34th_st,ferry_terminal,East 34th Street Ferry Landing,"FDR Dr at E 35th St, New York, NY",40.7440,-73.9708,NYC Ferry terminal
+nycf_east_90th_st,ferry_terminal,East 90th Street Ferry Landing,"East End Ave at E 90th St, New York, NY",40.7774,-73.9438,NYC Ferry terminal
+nycf_astoria,ferry_terminal,Astoria Ferry Landing,"Hallets Cove, Astoria, NY",40.7766,-73.9337,NYC Ferry terminal
+nycf_long_island_city,ferry_terminal,Long Island City Ferry Landing,"Center Blvd at 46th Ave, Long Island City, NY",40.7435,-73.9591,NYC Ferry terminal
+nycf_hunters_point_south,ferry_terminal,Hunters Point South Ferry Landing,"Center Blvd at 54th Ave, Long Island City, NY",40.7358,-73.9606,NYC Ferry terminal
+nycf_greenpoint,ferry_terminal,Greenpoint Ferry Landing,"India St at East River, Brooklyn, NY",40.7312,-73.9610,NYC Ferry terminal
+nycf_north_williamsburg,ferry_terminal,North Williamsburg Ferry Landing,"N 6th St at Kent Ave, Brooklyn, NY",40.7207,-73.9636,NYC Ferry terminal
+nycf_south_williamsburg,ferry_terminal,South Williamsburg Ferry Landing,"S 10th St at Kent Ave, Brooklyn, NY",40.7087,-73.9681,NYC Ferry terminal
+path_newark,path_station,Newark Penn Station,"1 Raymond Plaza W, Newark, NJ",40.7347,-74.1640,PATH station
+path_harrison,path_station,Harrison,"Frank E Rodgers Blvd S, Harrison, NJ",40.7394,-74.1555,PATH station
+path_journal_square,path_station,Journal Square,"1 PATH Plaza, Jersey City, NJ",40.7321,-74.0639,PATH station
+path_grove_st,path_station,Grove Street,"Grove St and Columbus Dr, Jersey City, NJ",40.7197,-74.0425,PATH station
+path_exchange_place,path_station,Exchange Place,"Exchange Pl, Jersey City, NJ",40.7167,-74.0330,PATH station
+path_newport,path_station,Newport,"Washington Blvd and Town Square Pl, Jersey City, NJ",40.7266,-74.0349,PATH station
+path_hoboken,path_station,Hoboken,"1 Hudson Pl, Hoboken, NJ",40.7349,-74.0281,PATH station
+path_christopher_st,path_station,Christopher Street,"Christopher St and Greenwich St, New York, NY",40.7335,-74.0076,PATH station
+path_9th_st,path_station,9th Street,"W 9th St and 6th Ave, New York, NY",40.7342,-73.9988,PATH station
+path_14th_st,path_station,14th Street,"W 14th St and 6th Ave, New York, NY",40.7373,-73.9968,PATH station
+path_23rd_st,path_station,23rd Street,"W 23rd St and 6th Ave, New York, NY",40.7429,-73.9928,PATH station
+path_33rd_st,path_station,33rd Street,"W 33rd St and 6th Ave, New York, NY",40.7492,-73.9884,PATH station
+path_world_trade_center,path_station,World Trade Center,"World Trade Center Transportation Hub, New York, NY",40.7116,-74.0110,PATH station

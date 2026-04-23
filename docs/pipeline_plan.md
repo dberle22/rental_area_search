@@ -16,10 +16,11 @@ The runbook assumes these local inputs exist or have been configured:
 | --- | --- | --- |
 | App settings | `config/settings.yaml` | Database path, default user, map center, target boroughs. |
 | Source config | `config/data_sources.yaml`, falling back to `config/data_sources.example.yaml` | Raw source paths and private Metro Deep Dive DB path. |
-| DDL | `sql/ddl/001_gold_tables.sql` | DuckDB schema/table creation. |
+| DDL | `sql/ddl/001_gold_tables.sql`, `sql/ddl/002_public_poi_table.sql` | DuckDB schema/table creation. |
 | Tract/NTA equivalency | `data/raw/geography/tract_to_nta_equivalency.csv` | `dim_tract_to_nta`. |
 | Census tract geometry | `data/raw/geography/census_tracts.geojson` | Neighborhood Explorer and property tract assignment. |
 | Subway GTFS/stops | `data/raw/transit/gtfs_subway.zip` or `data/raw/transit/subway_stops.csv` | `dim_subway_stop`. |
+| Public POI snapshots | `data/raw/public_poi/` | `dim_public_poi`. |
 | Google Maps export | `data/raw/google_maps/saved_places.kml`, `.json`, `.csv`, or CSV directory | `dim_user_poi`. |
 | Listing file | `data/raw/listings_sample.csv`; future default `data/raw/property_listings.csv` | `dim_property_listing`. |
 | Metro Deep Dive features | `sources.metro_deep_dive_tract_features.source_database_path` in local config | `fct_tract_features`, `fct_nta_features`. |
@@ -61,7 +62,17 @@ PYTHONPATH=src .venv/bin/python -c "from nyc_property_finder.pipelines.ingest_su
 Use `data/raw/transit/subway_stops.csv` in the same command if working from a
 normalized station file instead of the GTFS zip.
 
-4. Ingest Google Maps POIs.
+4. Ingest public baseline POIs.
+
+```bash
+PYTHONPATH=src .venv/bin/python -m nyc_property_finder.pipelines.ingest_public_poi
+```
+
+The public POI pipeline reuses dated snapshots under `data/raw/public_poi/`
+when today's files already exist, then replaces
+`property_explorer_gold.dim_public_poi`.
+
+5. Ingest Google Maps POIs.
 
 ```bash
 PYTHONPATH=src .venv/bin/python -c "from nyc_property_finder.pipelines.ingest_google_maps import run; run('data/raw/google_maps/saved_places.kml', 'data/processed/nyc_property_finder.duckdb')"
@@ -71,7 +82,7 @@ The same entrypoint accepts JSON, saved-list CSV, or a directory of saved-list
 CSVs. CSV exports that lack coordinates can use the NYC GeoSearch-backed
 geocode cache/quarantine path.
 
-5. Ingest property listings.
+6. Ingest property listings.
 
 ```bash
 PYTHONPATH=src .venv/bin/python -c "from nyc_property_finder.pipelines.ingest_property_file import run; run('data/raw/listings_sample.csv', 'data/processed/nyc_property_finder.duckdb', source='manual_csv')"
@@ -81,7 +92,7 @@ Rows without coordinates can enter the listing geocode cache/quarantine path.
 Rows still missing coordinates after geocoding are dropped from the normalized
 gold listing table and should be reviewed before scoring.
 
-6. Build tract and NTA feature tables.
+7. Build tract and NTA feature tables.
 
 ```bash
 PYTHONPATH=src .venv/bin/python -c "from nyc_property_finder.pipelines.build_neighborhood_features import run_metro_deep_dive; run_metro_deep_dive('data/processed/nyc_property_finder.duckdb', '/path/to/local/metro_deep_dive.duckdb')"
@@ -93,7 +104,7 @@ NYC tract metrics yet, the current pipeline can still materialize Brooklyn and
 Manhattan tract/NTA rows with null metric values so Neighborhood Explorer can
 validate geography before demographic coverage is solved.
 
-7. Build property context and scores.
+8. Build property context and scores.
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m nyc_property_finder.pipelines.build_property_context
@@ -105,7 +116,7 @@ Override paths when needed:
 PYTHONPATH=src .venv/bin/python -m nyc_property_finder.pipelines.build_property_context --database-path data/processed/nyc_property_finder.duckdb --tract-path data/raw/geography/census_tracts.geojson --tract-id-col GEOID
 ```
 
-8. Run validation tests.
+9. Run validation tests.
 
 ```bash
 .venv/bin/pytest
@@ -117,7 +128,7 @@ For a faster focused check while iterating on data contracts:
 .venv/bin/pytest tests/test_schema.py tests/test_tract_to_nta.py tests/test_neighborhood_features.py tests/test_property_context_pipeline.py tests/test_base_map_app.py
 ```
 
-9. Launch the apps.
+10. Launch the apps.
 
 ```bash
 PYTHONPATH=src .venv/bin/streamlit run app/streamlit_app_v2.py
@@ -138,7 +149,8 @@ PYTHONPATH=src .venv/bin/streamlit run app/streamlit_app.py
 | Init database | Empty gold tables | None | Re-runnable; creates tables if missing. |
 | Tract/NTA mapping | `dim_tract_to_nta` | Init database | Required by Neighborhood Explorer, NTA features, and property context. |
 | Subway ingest | `dim_subway_stop` | Init database | Required for mobility context. |
-| POI ingest | `dim_user_poi` | Init database | Required for personal fit context. |
+| Public POI ingest | `dim_public_poi` | Init database, subway GTFS snapshot | Baseline neighborhood amenity context; not yet wired into scoring. |
+| Google Maps POI ingest | `dim_user_poi` | Init database | Required for personal fit context. |
 | Listing ingest | `dim_property_listing` | Init database | Required before property context. |
 | Neighborhood features | `fct_tract_features`, `fct_nta_features` | Tract/NTA mapping | Can produce explicit null metric rows when source coverage is missing. |
 | Property context | `fct_property_context` | Listings, mapping, subway, POIs, features | Primary table for the property explorer. |
