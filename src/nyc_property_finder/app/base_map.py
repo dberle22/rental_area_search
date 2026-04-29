@@ -914,7 +914,21 @@ def load_tract_geometries(
 ) -> gpd.GeoDataFrame:
     """Load target Brooklyn and Manhattan tract geometries."""
 
-    tracts = gpd.read_file(tract_path)
+    tract_path = Path(tract_path)
+    if not tract_path.exists():
+        raise FileNotFoundError(
+            "Tract geometry file is missing: "
+            f"{tract_path}. Streamlit Cloud only sees files committed to the repository, "
+            "so local-only geography assets must be checked in or downloaded during app startup."
+        )
+
+    try:
+        tracts = gpd.read_file(tract_path)
+    except Exception as exc:
+        raise RuntimeError(
+            "Unable to read tract geometry file: "
+            f"{tract_path}. Confirm that the file is a valid GeoJSON/OGR-readable dataset in the deployed app."
+        ) from exc
     if tract_id_col not in tracts.columns:
         raise ValueError(f"Missing tract id column in tract geometry file: {tract_id_col}")
 

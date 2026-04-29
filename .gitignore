@@ -18,6 +18,9 @@ output/*
 
 # Keep directory placeholders
 !data/raw/.gitkeep
+!data/raw/geography/
+!data/raw/geography/census_tracts.geojson
+!data/raw/geography/tract_to_nta_equivalency.csv
 !data/raw/public_poi/
 data/raw/public_poi/**
 !data/raw/public_poi/**/
@@ -26,6 +29,7 @@ data/raw/public_poi/**
 !data/raw/public_poi/nyc_open_data/qpl_branches.csv
 !data/interim/.gitkeep
 !data/processed/.gitkeep
+!data/processed/nyc_property_finder.duckdb
 !output/.gitkeep
 
 # OS/editor
