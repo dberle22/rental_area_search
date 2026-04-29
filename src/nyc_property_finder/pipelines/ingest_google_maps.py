@@ -81,13 +81,14 @@ def write_poi(
 def run(
     path: str | Path,
     database_path: str | Path,
-    category_keywords: dict[str, list[str]] | None = None,
+    category_keywords: dict[str, object] | None = None,
     geocode_missing: bool = True,
 ) -> pd.DataFrame:
     """Pipeline entry point for Google Maps POI ingestion."""
 
     if category_keywords is None:
-        category_keywords = load_config()["poi_categories"].get("categories")
+        poi_config = load_config()["poi_categories"]
+        category_keywords = poi_config.get("keyword_taxonomy_rules") or poi_config.get("categories")
     poi = ingest_google_maps(
         path,
         category_keywords=category_keywords,

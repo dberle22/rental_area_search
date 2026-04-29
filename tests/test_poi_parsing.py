@@ -1,13 +1,22 @@
 import json
 
 from nyc_property_finder.pipelines.ingest_google_maps import ingest_google_maps
+from nyc_property_finder.transforms.poi import infer_taxonomy_from_text
 from nyc_property_finder.transforms.poi import normalize_category
 
 
 def test_normalize_category_uses_keyword_mapping() -> None:
-    assert normalize_category("Tiny Coffee Bar") == "bars"
+    assert normalize_category("Neighborhood Coffee") == "coffee_shops"
+    assert normalize_category("Tiny Cocktail Bar") == "bars"
     assert normalize_category("Prospect Park") == "parks"
     assert normalize_category("Somewhere Unknown") == "other"
+
+
+def test_infer_taxonomy_from_text_uses_restaurants_plus_subcategory() -> None:
+    taxonomy = infer_taxonomy_from_text("Excellent Japanese ramen spot")
+
+    assert taxonomy["category"] == "restaurants"
+    assert taxonomy["subcategory"] == "japanese"
 
 
 def test_ingest_google_maps_json_parses_and_normalizes(tmp_path) -> None:

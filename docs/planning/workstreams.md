@@ -308,29 +308,89 @@ demographic coverage.
 ## WS6 — Curated POI Expansion: Scraping
 
 **Goal**: Add a scraping path for extracting places from editorial articles
-(Eater NYC maps, NYT lists, etc.) into `dim_user_poi_v2`.
+(Eater, Time Out, and semi-manual sources) into `dim_user_poi_v2`. Fully
+manual-seed inputs (Permanent Style, Substack Mismatch, Backseat Driver) are
+handled in WS7, not here.
 
-**Depends on**: WS2.5 complete (so staged ingest and canonical merge rules are
-defined before adding a new input path).
+**Depends on**: WS2.5 complete.
 
-- [ ] `[you]` Pick 2-3 articles to scrape first (e.g., Eater NYC "38 Essential
-  Restaurants", NYT "100 Best"). Add URLs to the scraped table in
-  `docs/poi_categories.md`.
-- [ ] `[you+agent]` Design the scraper module structure and output schema
-  (mirrors `data/raw/scraped/<category>_<source>_<date>.csv`) and target the
-  web-scrape staging table rather than writing straight to `dim_user_poi_v2`
-- [ ] `[agent]` Implement the first scraper (LLM-assisted extraction or a
-  targeted parser)
-- [ ] `[you]` Review scraped output for quality before Places API resolution
-- [ ] `[agent]` Implement the web-scrape staging writer and canonical merge
-  promotion path for scraped curated POIs
-- [ ] `[agent]` Wire the scraper output through the curated POI resolver and
-  canonical merge flow so it lands in the web-scrape staging table first, then
-  merges into `dim_user_poi_v2`
-- [ ] Repeat for each priority article
+**Implementation note locked on 2026-04-28**: Any app-facing curated POI
+grouping/filtering should key off the latest canonical curated `category`
+field, not source filenames or raw saved-list names.
 
-**Done when**: at least one article has been scraped, resolved, and merged into
-`dim_user_poi_v2`.
+**State as of 2026-04-28**: The upstream half of this workstream is done.
+The scraper scaffold, Eater parser, config-backed article registry, normalized
+CSV contract, and CLI entry point are all built and tested. 17 articles across
+8 publishers are registered in `config/curated_scrape_articles.yaml` with
+locked taxonomy. The downstream half — resolve adapter, staging writer, and
+canonical merge — is the remaining implementation work. No live article HTML
+has been processed yet.
+
+### Already done
+
+- [x] `[you+agent]` Design scraper module structure, output schema, and article
+  registry (`curated_poi/web_scraping/`, `config/curated_scrape_articles.yaml`)
+- [x] `[agent]` Implement normalized CSV contract: `ScrapedArticleRow`,
+  `NormalizedScrapedRow`, `normalize_article_rows`, multi-address splitter,
+  `search_query` builder, stable `source_record_id`
+- [x] `[agent]` Implement config-backed article registry with `get_article()`,
+  `list_articles()`, and locked article taxonomy for all 17 registered articles
+- [x] `[agent]` Implement Eater parser: JSON-LD `ItemList` extraction, section-
+  text address/description extraction, multi-address row expansion
+- [x] `[agent]` Implement `export_curated_poi_eater_article` CLI: `--list-articles`,
+  `--article-slug`, `--html`, `--url`
+
+### Phase 1 — First end-to-end Eater article
+
+- [ ] `[you]` Save one real Eater HTML file locally under
+  `data/raw/scraped/raw/eater/<slug>_<date>.html` and run the parser; review
+  normalized CSV for address coverage, multi-address splits, and taxonomy before
+  any resolve work begins
+- [ ] `[agent]` Build web-scrape resolve adapter: reads a normalized scrape CSV,
+  maps `search_query` / `input_title` into the Places text search flow, reuses
+  the existing resolve and enrich machinery from `curated_poi/google_takeout/`
+  via a new `curated_poi/shared/` module rather than duplicating it
+- [ ] `[agent]` Write `stg_user_poi_web_scrape` writer and canonical merge path
+  into `dim_user_poi_v2` following the same staged-ingest model as
+  `stg_user_poi_google_takeout`
+- [ ] `[agent]` Make the export CLI generic: a new
+  `export_curated_poi_article` entry point that routes by `parser_name` from
+  the registry; keep `export_curated_poi_eater_article` as a compatibility alias
+- [ ] `[you]` Run first Eater article end to end; spot-check resolved rows in
+  `dim_user_poi_v2` and advance article status to `loaded` in config
+
+### Phase 2 — Remaining Eater articles
+
+- [ ] `[you]` Save HTML files for the remaining 4 Eater articles and run the
+  parser on each; review normalized CSVs before resolve
+- [ ] `[you]` Run remaining Eater articles through resolve/stage/merge; advance
+  each to `loaded` in `config/curated_scrape_articles.yaml`
+
+### Phase 3 — Time Out parser
+
+- [ ] `[agent]` Build Time Out parser (`publications/timeout.py`); Time Out
+  article structure differs from Eater so this needs its own parser class under
+  the same `ScrapedArticleRow` contract
+- [ ] `[you]` Save Time Out HTML files for the 3 registered articles and run the
+  parser; review normalized CSVs
+- [ ] `[you]` Run Time Out articles through resolve/stage/merge; advance each to
+  `loaded` in config
+
+### Phase 4 — Semi-manual sources
+
+Semi-manual articles (Wanderlog, Michelin Guide, Bon Appetit, NY Mag) use
+`capture_mode: semi_manual` and do not need a dedicated publication parser.
+
+- [ ] `[agent]` Build the semi-manual normalization path: reads a saved HTML or
+  text extract, applies a lightweight generic extractor or LLM-assisted pass,
+  writes the same normalized CSV contract
+- [ ] `[you]` Process the 4 semi-manual articles one at a time: capture raw
+  content locally, run normalization, review CSV, run through resolve/stage/merge,
+  advance to `loaded` in config
+
+**Done when**: all 5 Eater articles, all 3 Time Out articles, and all 4
+semi-manual articles show `loaded` status in `config/curated_scrape_articles.yaml`
+and their rows are visible in `dim_user_poi_v2`.
 
 ---
 

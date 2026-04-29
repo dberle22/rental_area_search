@@ -8,10 +8,20 @@ Curated POIs currently have one active ingestion path:
 
 - Google Takeout saved lists under `data/raw/google_maps/poi_nyc/`
 
+One additional curated path is now designed but not implemented yet:
+
+- Editorial article scraping under `data/raw/scraped/`
+
 The active implementation now lives under:
 
 ```text
 src/nyc_property_finder/curated_poi/google_takeout/
+```
+
+The planned scraping implementation will live under:
+
+```text
+src/nyc_property_finder/curated_poi/web_scraping/
 ```
 
 The preferred CLI entry point is:
@@ -46,14 +56,23 @@ Use this workflow whenever you want to add or adjust curated taxonomy.
 ### Where taxonomy lives
 
 - Config rules: `config/poi_categories.yaml`
+- Scraped article inventory and status tracker: `config/curated_scrape_articles.yaml`
 - Reference documentation: `docs/poi_categories.md`
+
+Within `config/poi_categories.yaml`:
+
+- `curated_taxonomy` is the canonical curated taxonomy contract.
+- `keyword_taxonomy_rules` is a legacy matcher used for coarse Google Maps
+  export normalization and should not be treated as the source of truth.
 
 ### What to update
 
 1. Update `config/poi_categories.yaml`.
-2. Add or revise the file-level rule under `curated_taxonomy.files`.
-3. If needed, add or revise `tag_aliases` used to derive subcategory or level-3 descriptors.
-4. Update `docs/poi_categories.md` so the documented taxonomy matches the config.
+2. Update `config/curated_scrape_articles.yaml` when scraped article status, parser investment, or article-level taxonomy changes.
+3. Add or revise the file-level rule under `curated_taxonomy.files`.
+4. If needed, add or revise `tag_aliases` used to derive subcategory or level-3 descriptors.
+5. Only update `keyword_taxonomy_rules` when the legacy coarse matcher needs better fallback behavior.
+6. Update `docs/poi_categories.md` so the documented taxonomy and scrape inventory match the config.
 
 ### Taxonomy model
 
@@ -77,6 +96,156 @@ Use this flow when your places are saved as Google Maps lists.
 4. Create a one-time export.
 5. Download the zip when the email arrives.
 6. Put the CSVs you want to ingest under `data/raw/google_maps/poi_nyc/`.
+
+## Scrape Editorial Articles
+
+Use this flow when your places come from Eater, Time Out, Vogue, or similar
+articles.
+
+### Locked approach
+
+- Scraping is file-first, not database-first.
+- Each publication gets its own scraper module.
+- Low-volume or awkward one-off articles can use a semi-manual or manual-seed path.
+- Multi-address mentions must be split into distinct rows before Places resolution.
+
+### Planned package shape
+
+```text
+src/nyc_property_finder/curated_poi/web_scraping/
+  base.py
+  normalize.py
+  registry.py
+  publications/
+    eater.py
+```
+
+### Current first implementation
+
+The first live scraper scaffold is Eater. It supports:
+
+- a locked Eater article registry
+- a config-backed article inventory and status tracker
+- listing registered article slugs
+- parsing a saved local HTML file
+- optionally fetching a live article URL
+- writing one normalized CSV for QA review
+
+Entry point:
+
+```text
+nyc_property_finder.pipelines.export_curated_poi_eater_article
+```
+
+### File flow
+
+```text
+article html/text
+  -> data/raw/scraped/raw/<publication>/<slug>_<date>.{html,txt,json}
+  -> data/raw/scraped/normalized/<category>_<publication>_<slug>_<date>.csv
+  -> property_explorer_gold.stg_user_poi_web_scrape
+  -> property_explorer_gold.dim_user_poi_v2
+```
+
+### Shared normalized scrape contract
+
+Every publication-specific scraper should normalize into the same row shape
+before Places resolution. Keep these fields at minimum:
+
+- `publisher`
+- `article_title`
+- `article_url`
+- `source_list_name`
+- `item_rank`
+- `item_name`
+- `item_url`
+- `raw_address`
+- `raw_description`
+- `raw_neighborhood`
+- `raw_borough`
+- `category`
+- `subcategory`
+- `detail_level_3`
+- `scraped_at`
+
+During normalization, these fields should then map into the curated POI
+resolve contract used downstream:
+
+- `input_title` = `item_name`
+- `note` = `raw_address`
+- `comment` = `raw_description`
+- `source_url` = `article_url` or `item_url`
+- `search_query` = `item_name + raw_address + NYC context`
+
+### Taxonomy rules for scraped inputs
+
+- Set `category` and `subcategory` from the article or list identity first.
+- Use publication-specific parser hints second when needed.
+- Use description keyword extraction only as a fallback.
+- Use Google Places metadata later for enrichment, not as the primary source of taxonomy.
+
+### QA before Places resolution
+
+Review each normalized scrape file before a live resolve run:
+
+- row count
+- missing names
+- missing addresses
+- duplicate `item_name + raw_address`
+- multi-address mentions split correctly
+- obvious non-places removed
+
+### Reusable Eater workflow
+
+1. List the registered Eater articles:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m nyc_property_finder.pipelines.export_curated_poi_eater_article \
+  --list-articles
+```
+
+2. Save the raw article HTML under `data/raw/scraped/raw/eater/`.
+
+Recommended filename shape:
+
+```text
+data/raw/scraped/raw/eater/<article_slug>_<date>.html
+```
+
+3. Export one normalized review CSV from the saved HTML:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m nyc_property_finder.pipelines.export_curated_poi_eater_article \
+  --article-slug best-bakeries-nyc \
+  --html data/raw/scraped/raw/eater/best-bakeries-nyc_2026-04-28.html
+```
+
+4. Review the normalized CSV written under `data/raw/scraped/normalized/`.
+
+The command prints:
+
+- total rows written
+- rows with addresses
+- duplicate `item_name + raw_address` count
+
+The article listing also includes each article's current scrape `status`.
+
+5. Spot-check the file before any Places resolution work:
+
+- verify article-level taxonomy is correct
+- verify multi-address mentions became separate rows
+- verify `raw_address` and `raw_description` are clean
+- remove or correct obvious non-places if needed
+
+Optional live-fetch mode:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m nyc_property_finder.pipelines.export_curated_poi_eater_article \
+  --article-slug best-bakeries-nyc \
+  --url https://ny.eater.com/maps/best-bakeries-nyc
+```
+
+Use saved HTML by default when iterating so parser QA is reproducible.
 
 ## Dry Run A Batch
 
@@ -168,6 +337,7 @@ DuckDB table:
 ```text
 data/processed/nyc_property_finder.duckdb
 property_explorer_gold.stg_user_poi_google_takeout
+property_explorer_gold.stg_user_poi_web_scrape
 property_explorer_gold.dim_user_poi_v2
 ```
 

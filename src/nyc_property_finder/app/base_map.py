@@ -71,6 +71,8 @@ BASE_COLUMNS = [
 POI_COLUMNS = [
     "poi_id",
     "source_list_names",
+    "category",
+    "subcategory",
     "categories",
     "primary_category",
     "name",
@@ -617,11 +619,13 @@ def load_poi_map_data(
         if not legacy.empty:
             poi = legacy.rename(
                 columns={
-                    "category": "primary_category",
+                    "category": "category",
                     "source_list_name": "source_list_names",
                 }
             )
-            poi["categories"] = poi["primary_category"]
+            poi["subcategory"] = poi["category"]
+            poi["primary_category"] = poi["category"]
+            poi["categories"] = poi["category"]
             poi["input_title"] = poi["name"]
             poi["address"] = ""
             source = "duckdb_legacy"
@@ -644,6 +648,7 @@ def load_poi_map_data(
         stats={
             "poi_count": int(len(points)),
             "source_list_count": len(available_poi_source_lists(points)),
+            "category_count": len(available_poi_categories(points)),
         },
     )
 
@@ -750,21 +755,30 @@ def prepare_poi_points(poi: pd.DataFrame) -> pd.DataFrame:
         lambda values: ", ".join(format_poi_list_name(value) for value in values)
     )
     output["category_values"] = output["categories"].apply(parse_json_text_array)
+    output["category_values"] = [
+        values or [canonical_category]
+        for values, canonical_category in zip(
+            output["category_values"],
+            output["category"].fillna("").astype(str),
+            strict=True,
+        )
+    ]
     output["category_display"] = [
-        format_poi_category(category or primary)
-        for category, primary in zip(
+        format_poi_category(canonical_category or category or primary)
+        for canonical_category, category, primary in zip(
+            output["category"].fillna(""),
             output["category_values"].apply(lambda values: values[0] if values else ""),
             output["primary_category"].fillna(""),
             strict=True,
         )
     ]
 
-    source_lists = available_poi_source_lists(output)
+    categories = available_poi_categories(output)
     color_lookup = {
-        source_list: POI_COLOR_PALETTE[index % len(POI_COLOR_PALETTE)]
-        for index, source_list in enumerate(source_lists)
+        category: POI_COLOR_PALETTE[index % len(POI_COLOR_PALETTE)]
+        for index, category in enumerate(categories)
     }
-    output["poi_color"] = output["primary_source_list"].map(color_lookup).apply(
+    output["poi_color"] = output["category_display"].map(color_lookup).apply(
         lambda color: color if isinstance(color, list) else [205, 83, 64, 230]
     )
     output["tooltip_html"] = (
@@ -792,19 +806,31 @@ def available_poi_source_lists(poi: pd.DataFrame) -> list[str]:
     return sorted(values)
 
 
-def filter_poi_points_by_source_lists(
-    poi: pd.DataFrame,
-    selected_source_lists: tuple[str, ...],
-) -> pd.DataFrame:
-    """Filter POIs to any selected Google Maps source list."""
+def available_poi_categories(poi: pd.DataFrame) -> list[str]:
+    """Return sorted curated-category labels available in a POI dataframe."""
 
-    if poi.empty or not selected_source_lists:
+    if poi.empty or "category_display" not in poi.columns:
+        return []
+
+    values = {
+        format_poi_category(value)
+        for value in poi["category_display"].fillna("").astype(str)
+        if str(value).strip()
+    }
+    return sorted(values)
+
+
+def filter_poi_points_by_categories(
+    poi: pd.DataFrame,
+    selected_categories: tuple[str, ...],
+) -> pd.DataFrame:
+    """Filter POIs to any selected curated category."""
+
+    if poi.empty or not selected_categories:
         return poi.iloc[0:0].copy()
 
-    selected = set(selected_source_lists)
-    mask = poi["source_list_values"].apply(
-        lambda values: bool(selected.intersection(format_poi_list_name(value) for value in values))
-    )
+    selected = {format_poi_category(value) for value in selected_categories if str(value).strip()}
+    mask = poi["category_display"].apply(lambda value: format_poi_category(value) in selected)
     return poi.loc[mask].copy()
 
 

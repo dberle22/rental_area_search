@@ -12,10 +12,10 @@ from nyc_property_finder.app.base_map import (
     BaseGeographyData,
     BaseMapData,
     PoiMapData,
-    available_poi_source_lists,
+    available_poi_categories,
     build_base_map_data_from_loaded,
     build_base_map_deck,
-    filter_poi_points_by_source_lists,
+    filter_poi_points_by_categories,
     filter_points_to_supported_geography,
     filter_public_poi_points_by_categories,
     format_metric_value,
@@ -137,16 +137,16 @@ def main() -> None:
     )
     map_data = build_base_map_data_from_loaded(geography_data, metric=metric)
     poi_data = cached_load_poi_map_data(database_path)
-    poi_source_lists = available_poi_source_lists(poi_data.points)
+    poi_categories = available_poi_categories(poi_data.points)
     public_poi_categories = list(DEFAULT_PUBLIC_POI_CATEGORIES)
 
     with st.sidebar:
         st.header("Curated POIs")
         show_pois = st.toggle("Show curated layer", value=not poi_data.points.empty)
-        selected_poi_source_lists = st.multiselect(
-            "Curated lists",
-            poi_source_lists,
-            default=poi_source_lists,
+        selected_poi_categories = st.multiselect(
+            "Curated categories",
+            poi_categories,
+            default=poi_categories,
             disabled=not show_pois or poi_data.points.empty,
         )
         if poi_data.points.empty:
@@ -191,9 +191,9 @@ def main() -> None:
                 f"{public_poi_data.stats['category_count']} selected categories."
             )
 
-    filtered_poi_points = filter_poi_points_by_source_lists(
+    filtered_poi_points = filter_poi_points_by_categories(
         poi_data.points,
-        tuple(selected_poi_source_lists),
+        tuple(selected_poi_categories),
     )
     filtered_public_poi_points = filter_public_poi_points_by_categories(
         public_poi_data.points,

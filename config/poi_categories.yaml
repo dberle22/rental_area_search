@@ -1,74 +1,131 @@
-categories:
+keyword_taxonomy_rules:
+  # Legacy matcher rules for coarse Google Maps export normalization.
+  # These are not the canonical taxonomy; the real curated taxonomy lives under
+  # `curated_taxonomy`.
   # --- Food & Drink (specific first to avoid false matches) ---
   pizza:
-    - pizza
+    category: restaurants
+    subcategory: pizza
+    keywords:
+      - pizza
   bakeries:
-    - bakery
-    - pastry
-    - patisserie
+    category: bakeries
+    subcategory: bakeries
+    keywords:
+      - bakery
+      - pastry
+      - patisserie
   sandwiches:
-    - sandwich
+    category: restaurants
+    subcategory: sandwiches
+    keywords:
+      - sandwich
   coffee_shops:
-    - coffee
-    - cafe
-    - espresso
-  rest_chinese:
-    - chinese
-    - dim sum
-    - cantonese
-  rest_japanese:
-    - japanese
-    - sushi
-    - ramen
-    - izakaya
+    category: coffee_shops
+    subcategory: coffee_shops
+    keywords:
+      - coffee
+      - cafe
+      - espresso
+  chinese_cuisine:
+    category: restaurants
+    subcategory: chinese
+    keywords:
+      - chinese
+      - dim sum
+      - cantonese
+  japanese_cuisine:
+    category: restaurants
+    subcategory: japanese
+    keywords:
+      - japanese
+      - sushi
+      - ramen
+      - izakaya
   specialty_grocery:
-    - speciality
-    - specialty
-    - gourmet
+    category: specialty_grocery
+    subcategory: specialty_grocery
+    keywords:
+      - speciality
+      - specialty
+      - gourmet
   # food_markets must come before groceries — both can match "market"
   food_markets:
-    - market
-    - food hall
+    category: food_markets
+    subcategory: food_markets
+    keywords:
+      - market
+      - food hall
   restaurants:
-    - restaurant
-    - diner
-    - food
+    category: restaurants
+    subcategory: restaurants
+    keywords:
+      - restaurant
+      - diner
+      - food
   bars:
-    - bar
-    - brewery
-    - pub
-    - cocktail
+    category: bars
+    subcategory: bars
+    keywords:
+      - bar
+      - brewery
+      - pub
+      - cocktail
   # --- Culture & Entertainment ---
   bookstores:
-    - bookstore
-    - books
+    category: bookstores
+    subcategory: bookstores
+    keywords:
+      - bookstore
+      - books
   record_stores:
-    - record
-    - vinyl
+    category: record_stores
+    subcategory: record_stores
+    keywords:
+      - record
+      - vinyl
   museums:
-    - museum
-    - gallery
+    category: museums
+    subcategory: museums
+    keywords:
+      - museum
+      - gallery
   movie_theaters:
-    - cinema
-    - movie
-    - theater
+    category: movie_theaters
+    subcategory: movie_theaters
+    keywords:
+      - cinema
+      - movie
+      - theater
   music_venues:
-    - venue
-    - concert
-    - music
-    - jazz
+    category: music_venues
+    subcategory: music_venues
+    keywords:
+      - venue
+      - concert
+      - music
+      - jazz
   # --- Everyday & Outdoor ---
   groceries:
-    - grocery
-    - supermarket
+    category: groceries
+    subcategory: groceries
+    keywords:
+      - grocery
+      - supermarket
   shopping:
-    - shop
-    - store
-    - mall
+    category: shopping
+    subcategory: shopping
+    keywords:
+      - shop
+      - store
+      - mall
   parks:
-    - park
-    - garden
-    - playground
+    category: parks
+    subcategory: parks
+    keywords:
+      - park
+      - garden
+      - playground
 
 curated_taxonomy:
   files:
