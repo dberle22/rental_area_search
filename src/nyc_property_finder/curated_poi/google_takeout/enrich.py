@@ -8,13 +8,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from nyc_property_finder.google_places_poi.cache import (
+from nyc_property_finder.curated_poi.google_takeout.cache import (
     append_details_cache_row,
     read_details_cache,
     read_resolution_cache,
 )
-from nyc_property_finder.google_places_poi.client import get_place_details
-from nyc_property_finder.google_places_poi.config import (
+from nyc_property_finder.curated_poi.google_takeout.client import get_place_details
+from nyc_property_finder.curated_poi.google_takeout.config import (
     DEFAULT_API_KEYS_PATH,
     DEFAULT_DETAILS_CACHE_PATH,
     DEFAULT_ENV_PATH,

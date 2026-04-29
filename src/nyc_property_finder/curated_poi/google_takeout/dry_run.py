@@ -7,13 +7,13 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from nyc_property_finder.google_places_poi.cache import read_resolution_cache
-from nyc_property_finder.google_places_poi.config import (
+from nyc_property_finder.curated_poi.google_takeout.cache import read_resolution_cache
+from nyc_property_finder.curated_poi.google_takeout.config import (
     DEFAULT_DETAILS_CACHE_PATH,
     DEFAULT_RESOLUTION_CACHE_PATH,
     DEFAULT_SEARCH_CONTEXT,
 )
-from nyc_property_finder.google_places_poi.parse_takeout import parse_google_places_saved_list_csv
+from nyc_property_finder.curated_poi.google_takeout.parse_takeout import parse_google_places_saved_list_csv
 
 
 @dataclass(frozen=True)
@@ -33,6 +33,9 @@ class DryRunReport:
     details_cache_misses_for_cached_places: int
     estimated_text_search_calls: int
     estimated_place_details_calls: int
+    categories: list[str]
+    subcategories: list[str]
+    detail_level_3_values: list[str]
 
     def to_dict(self) -> dict[str, Any]:
         """Return a plain dict for logging, notebooks, or future CLI output."""
@@ -83,7 +86,64 @@ def plan_dry_run(
         details_cache_misses_for_cached_places=len(detail_misses_for_cached_places),
         estimated_text_search_calls=len(resolution_misses),
         estimated_place_details_calls=estimated_place_details_calls,
+        categories=_unique_sorted_values(parsed.get("category")),
+        subcategories=_unique_sorted_values(parsed.get("subcategory")),
+        detail_level_3_values=_unique_sorted_tokens(parsed.get("detail_level_3")),
     )
+
+
+@dataclass(frozen=True)
+class DirectoryDryRunReport:
+    """Dry-run summary for a whole curated POI directory."""
+
+    input_dir: str
+    file_count: int
+    files: list[DryRunReport]
+    estimated_text_search_calls: int
+    estimated_place_details_calls: int
+    input_rows: int
+    unique_source_records: int
+
+    def to_dict(self) -> dict[str, Any]:
+        output = asdict(self)
+        output["files"] = [report.to_dict() for report in self.files]
+        return output
+
+
+def plan_directory_dry_run(
+    input_dir: str | Path,
+    resolution_cache_path: str | Path = DEFAULT_RESOLUTION_CACHE_PATH,
+    details_cache_path: str | Path = DEFAULT_DETAILS_CACHE_PATH,
+    search_context: str = DEFAULT_SEARCH_CONTEXT,
+) -> DirectoryDryRunReport:
+    """Estimate cache coverage and API calls for every CSV in one directory."""
+
+    input_dir = Path(input_dir)
+    files = [
+        plan_dry_run(
+            csv_path=path,
+            resolution_cache_path=resolution_cache_path,
+            details_cache_path=details_cache_path,
+            search_context=search_context,
+        )
+        for path in iter_input_csv_paths(input_dir)
+    ]
+    return DirectoryDryRunReport(
+        input_dir=str(input_dir),
+        file_count=len(files),
+        files=files,
+        estimated_text_search_calls=sum(report.estimated_text_search_calls for report in files),
+        estimated_place_details_calls=sum(report.estimated_place_details_calls for report in files),
+        input_rows=sum(report.input_rows for report in files),
+        unique_source_records=sum(report.unique_source_records for report in files),
+    )
+
+
+def iter_input_csv_paths(input_dir: str | Path) -> list[Path]:
+    """Return sorted curated POI CSVs from one directory."""
+
+    input_dir = Path(input_dir)
+    return sorted(path for path in input_dir.glob("*.csv") if path.is_file())
 
 
 def read_details_cache_place_ids(path: str | Path) -> set[str]:
@@ -120,3 +180,22 @@ def _extract_place_id(payload: dict[str, Any]) -> str:
     if isinstance(nested_payload, dict):
         return _extract_place_id(nested_payload)
     return ""
+
+
+def _unique_sorted_values(values: Any) -> list[str]:
+    if values is None:
+        return []
+    output = sorted({str(value).strip() for value in values if str(value).strip()})
+    return output
+
+
+def _unique_sorted_tokens(values: Any, delimiter: str = "|") -> list[str]:
+    if values is None:
+        return []
+    output: set[str] = set()
+    for value in values:
+        for token in str(value).split(delimiter):
+            token = token.strip()
+            if token:
+                output.add(token)
+    return sorted(output)

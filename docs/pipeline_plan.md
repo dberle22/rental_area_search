@@ -21,7 +21,7 @@ The runbook assumes these local inputs exist or have been configured:
 | Census tract geometry | `data/raw/geography/census_tracts.geojson` | Neighborhood Explorer and property tract assignment. |
 | Subway GTFS/stops | `data/raw/transit/gtfs_subway.zip` or `data/raw/transit/subway_stops.csv` | `dim_subway_stop`. |
 | Public POI snapshots | `data/raw/public_poi/` | `dim_public_poi`. |
-| Google Maps export | `data/raw/google_maps/saved_places.kml`, `.json`, `.csv`, or CSV directory | `dim_user_poi`. |
+| Google Maps export | `data/raw/google_maps/poi_nyc/` — one CSV per category | `dim_user_poi_v2`. |
 | Listing file | `data/raw/listings_sample.csv`; future default `data/raw/property_listings.csv` | `dim_property_listing`. |
 | Metro Deep Dive features | `sources.metro_deep_dive_tract_features.source_database_path` in local config | `fct_tract_features`, `fct_nta_features`. |
 
@@ -53,14 +53,17 @@ with centroid assignment.
 PYTHONPATH=src .venv/bin/python -c "from nyc_property_finder.pipelines.build_tract_to_nta import run; run('data/raw/geography/census_tracts.geojson', 'data/raw/geography/nta_boundaries.geojson', 'data/processed/nyc_property_finder.duckdb')"
 ```
 
-3. Ingest subway stops.
+3. Ingest subway stops (legacy — superseded by step 4).
+
+This step writes `dim_subway_stop`, which is still referenced by the property
+context pipeline for nearest-subway scoring. The public POI pipeline (step 4)
+also ingests subway stations into `dim_public_poi`; the two tables serve
+different purposes and can coexist. Skip this step if `dim_subway_stop` is
+already populated and you are only refreshing POI data.
 
 ```bash
 PYTHONPATH=src .venv/bin/python -c "from nyc_property_finder.pipelines.ingest_subway_stops import run; run('data/raw/transit/gtfs_subway.zip', 'data/processed/nyc_property_finder.duckdb')"
 ```
-
-Use `data/raw/transit/subway_stops.csv` in the same command if working from a
-normalized station file instead of the GTFS zip.
 
 4. Ingest public baseline POIs.
 
@@ -72,15 +75,41 @@ The public POI pipeline reuses dated snapshots under `data/raw/public_poi/`
 when today's files already exist, then replaces
 `property_explorer_gold.dim_public_poi`.
 
-5. Ingest Google Maps POIs.
+5. Ingest curated Google Maps POIs.
+
+The active curated Google Takeout pipeline lives under
+`src/nyc_property_finder/curated_poi/google_takeout/`. The preferred CLI entry
+point is `nyc_property_finder.pipelines.ingest_curated_poi_google_takeout`.
+The older `ingest_google_places_poi` command still exists as a compatibility
+wrapper.
 
 ```bash
-PYTHONPATH=src .venv/bin/python -c "from nyc_property_finder.pipelines.ingest_google_maps import run; run('data/raw/google_maps/saved_places.kml', 'data/processed/nyc_property_finder.duckdb')"
+PYTHONPATH=src .venv/bin/python -m nyc_property_finder.pipelines.ingest_curated_poi_google_takeout \
+  --input-dir data/raw/google_maps/poi_nyc
 ```
 
-The same entrypoint accepts JSON, saved-list CSV, or a directory of saved-list
-CSVs. CSV exports that lack coordinates can use the NYC GeoSearch-backed
-geocode cache/quarantine path.
+This processes all CSVs under `data/raw/google_maps/poi_nyc/`, resolves place
+names to Google Place IDs via the Places API (cache-first, capped API calls),
+stages the current batch in `property_explorer_gold.stg_user_poi_google_takeout`,
+and promotes that staged batch into canonical `dim_user_poi_v2`. See
+`docs/poi_categories.md` for the current list of `poi_nyc/` files,
+category/subcategory rules, and status.
+
+Use dry-run first to inspect per-file row counts, taxonomy assignments, and
+estimated API calls without hitting Google or writing DuckDB:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m nyc_property_finder.pipelines.ingest_curated_poi_google_takeout \
+  --input-dir data/raw/google_maps/poi_nyc \
+  --dry-run
+```
+
+To process a single file during development:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m nyc_property_finder.pipelines.ingest_curated_poi_google_takeout \
+  data/raw/google_maps/poi_nyc/poi_bakeries_nyc.csv
+```
 
 6. Ingest property listings.
 
@@ -150,7 +179,7 @@ PYTHONPATH=src .venv/bin/streamlit run app/streamlit_app.py
 | Tract/NTA mapping | `dim_tract_to_nta` | Init database | Required by Neighborhood Explorer, NTA features, and property context. |
 | Subway ingest | `dim_subway_stop` | Init database | Required for mobility context. |
 | Public POI ingest | `dim_public_poi` | Init database, subway GTFS snapshot | Baseline neighborhood amenity context; not yet wired into scoring. |
-| Google Maps POI ingest | `dim_user_poi` | Init database | Required for personal fit context. |
+| Google Maps POI ingest | `dim_user_poi_v2` | Init database | Required for personal fit context. |
 | Listing ingest | `dim_property_listing` | Init database | Required before property context. |
 | Neighborhood features | `fct_tract_features`, `fct_nta_features` | Tract/NTA mapping | Can produce explicit null metric rows when source coverage is missing. |
 | Property context | `fct_property_context` | Listings, mapping, subway, POIs, features | Primary table for the property explorer. |

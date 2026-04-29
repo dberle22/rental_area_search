@@ -30,10 +30,19 @@ CREATE TABLE IF NOT EXISTS property_explorer_gold.dim_user_poi (
 CREATE TABLE IF NOT EXISTS property_explorer_gold.dim_user_poi_v2 (
     poi_id VARCHAR,
     source_system VARCHAR,
+    source_systems VARCHAR,
+    primary_source_system VARCHAR,
     source_record_id VARCHAR,
     source_list_names VARCHAR,
+    category VARCHAR,
+    subcategory VARCHAR,
+    detail_level_3 VARCHAR,
     categories VARCHAR,
     primary_category VARCHAR,
+    subcategories VARCHAR,
+    primary_subcategory VARCHAR,
+    detail_level_3_values VARCHAR,
+    primary_detail_level_3 VARCHAR,
     name VARCHAR,
     input_title VARCHAR,
     note VARCHAR,
@@ -45,8 +54,46 @@ CREATE TABLE IF NOT EXISTS property_explorer_gold.dim_user_poi_v2 (
     address VARCHAR,
     lat DOUBLE,
     lon DOUBLE,
+    has_place_details BOOLEAN,
     details_fetched_at TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS property_explorer_gold.stg_user_poi_google_takeout (
+    poi_id VARCHAR,
+    source_system VARCHAR,
+    source_systems VARCHAR,
+    primary_source_system VARCHAR,
+    source_record_id VARCHAR,
+    source_list_names VARCHAR,
+    category VARCHAR,
+    subcategory VARCHAR,
+    detail_level_3 VARCHAR,
+    categories VARCHAR,
+    primary_category VARCHAR,
+    subcategories VARCHAR,
+    primary_subcategory VARCHAR,
+    detail_level_3_values VARCHAR,
+    primary_detail_level_3 VARCHAR,
+    name VARCHAR,
+    input_title VARCHAR,
+    note VARCHAR,
+    tags VARCHAR,
+    comment VARCHAR,
+    source_url VARCHAR,
+    google_place_id VARCHAR,
+    match_status VARCHAR,
+    address VARCHAR,
+    lat DOUBLE,
+    lon DOUBLE,
+    has_place_details BOOLEAN,
+    details_fetched_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS property_explorer_gold.stg_user_poi_web_scrape AS
+SELECT * FROM property_explorer_gold.stg_user_poi_google_takeout WHERE 1 = 0;
+
+CREATE TABLE IF NOT EXISTS property_explorer_gold.stg_user_poi_manual_upload AS
+SELECT * FROM property_explorer_gold.stg_user_poi_google_takeout WHERE 1 = 0;
 
 CREATE TABLE IF NOT EXISTS property_explorer_gold.dim_property_listing (
     property_id VARCHAR,
@@ -77,6 +124,8 @@ CREATE TABLE IF NOT EXISTS property_explorer_gold.fct_tract_features (
 CREATE TABLE IF NOT EXISTS property_explorer_gold.fct_nta_features (
     nta_id VARCHAR,
     nta_name VARCHAR,
+    borough VARCHAR,
+    tract_count INTEGER,
     median_income DOUBLE,
     median_rent DOUBLE,
     median_home_value DOUBLE,

@@ -14,7 +14,7 @@ metric rows.
 
 ## Grain
 
-One row per `nta_id` and `nta_name`.
+One row per `nta_id` and `nta_name`, with NTA-level context fields retained.
 
 ## Source Tables
 
@@ -27,6 +27,8 @@ One row per `nta_id` and `nta_name`.
 | --- | --- | --- |
 | `nta_id` | `VARCHAR` | NYC 2020 NTA code. Primary neighborhood identifier. |
 | `nta_name` | `VARCHAR` | NTA display name. |
+| `borough` | `VARCHAR` | Borough name carried from the tract-to-NTA mapping. Cross-borough NTAs are joined as a stable label such as `Bronx / Manhattan`. |
+| `tract_count` | `INTEGER` | Count of distinct mapped tracts contributing to the NTA row. |
 | `median_income` | `DOUBLE` | Median of mapped tract `median_income` values. |
 | `median_rent` | `DOUBLE` | Median of mapped tract `median_rent` values. |
 | `median_home_value` | `DOUBLE` | Median of mapped tract `median_home_value` values. |
@@ -37,9 +39,10 @@ One row per `nta_id` and `nta_name`.
 ## Business Logic
 
 - Join tract features to `dim_tract_to_nta` on `tract_id`.
-- Use the distinct tract-to-NTA mapping columns `tract_id`, `nta_id`, and
-  `nta_name` before joining.
+- Use the distinct tract-to-NTA mapping columns `tract_id`, `nta_id`,
+  `nta_name`, and `borough` before joining.
 - Use an inner join so only mapped tracts contribute to NTA summaries.
+- Count distinct mapped `tract_id` values into `tract_count`.
 - Aggregate all numeric feature columns with `median()`, matching the current
   Python implementation in `build_nta_features`.
 - `median()` ignores nulls. When every mapped tract value is null for a metric,
@@ -62,6 +65,7 @@ Profile source: temporary rebuild of local
 | Duplicate NTA rows | 0 |
 | Null `nta_id` rows | 0 |
 | Null `nta_name` rows | 0 |
+| Null `borough` rows | 0 |
 | Non-null `median_income` rows | 87 |
 | Non-null `median_rent` rows | 87 |
 | Non-null `median_home_value` rows | 85 |

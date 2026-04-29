@@ -9,17 +9,29 @@ from typing import Any
 
 import pandas as pd
 
-from nyc_property_finder.google_places_poi.cache import read_details_cache, read_resolution_cache
-from nyc_property_finder.google_places_poi.config import DEFAULT_DETAILS_CACHE_PATH, DEFAULT_RESOLUTION_CACHE_PATH
+from nyc_property_finder.curated_poi.google_takeout.cache import read_details_cache, read_resolution_cache
+from nyc_property_finder.curated_poi.google_takeout.config import (
+    DEFAULT_DETAILS_CACHE_PATH,
+    DEFAULT_RESOLUTION_CACHE_PATH,
+)
 
 
 DIM_USER_POI_V2_COLUMNS = [
     "poi_id",
     "source_system",
+    "source_systems",
+    "primary_source_system",
     "source_record_id",
     "source_list_names",
+    "category",
+    "subcategory",
+    "detail_level_3",
     "categories",
     "primary_category",
+    "subcategories",
+    "primary_subcategory",
+    "detail_level_3_values",
+    "primary_detail_level_3",
     "name",
     "input_title",
     "note",
@@ -31,6 +43,7 @@ DIM_USER_POI_V2_COLUMNS = [
     "address",
     "lat",
     "lon",
+    "has_place_details",
     "details_fetched_at",
 ]
 
@@ -38,10 +51,13 @@ DIM_USER_POI_V2_COLUMNS = [
 def build_dim_user_poi_v2(
     resolution_cache_path: str | Path = DEFAULT_RESOLUTION_CACHE_PATH,
     details_cache_path: str | Path = DEFAULT_DETAILS_CACHE_PATH,
+    source_record_ids: set[str] | None = None,
 ) -> pd.DataFrame:
     """Build one deduplicated POI row per Google place ID."""
 
     resolution_cache = read_resolution_cache(resolution_cache_path)
+    if source_record_ids is not None:
+        resolution_cache = resolution_cache[resolution_cache["source_record_id"].isin(source_record_ids)].copy()
     details_cache = read_details_cache(details_cache_path)
     resolved = resolution_cache[resolution_cache["google_place_id"] != ""].copy()
     if resolved.empty:
@@ -65,10 +81,21 @@ def build_dim_user_poi_v2(
             {
                 "poi_id": _stable_poi_id("google_places", google_place_id),
                 "source_system": "google_places",
+                "source_systems": _json_array(group["source_system"]),
+                "primary_source_system": _fallback_text(first["source_system"]),
                 "source_record_id": _json_array(group["source_record_id"]),
                 "source_list_names": _json_array(group["source_list_name"]),
+                "category": _fallback_category(first["category"]),
+                "subcategory": _fallback_subcategory(first["category"], first["subcategory"]),
+                "detail_level_3": _first_token(first["detail_level_3"]),
                 "categories": _json_array(group["category"].map(_fallback_category)),
                 "primary_category": _fallback_category(first["category"]),
+                "subcategories": _json_array(
+                    group.apply(lambda row: _fallback_subcategory(row["category"], row["subcategory"]), axis=1)
+                ),
+                "primary_subcategory": _fallback_subcategory(first["category"], first["subcategory"]),
+                "detail_level_3_values": _json_array(group["detail_level_3"], split_delimiter="|"),
+                "primary_detail_level_3": _first_token(first["detail_level_3"]),
                 "name": name or first["input_title"],
                 "input_title": first["input_title"],
                 "note": _json_array(group["note"]),
@@ -80,6 +107,7 @@ def build_dim_user_poi_v2(
                 "address": payload.get("formattedAddress", ""),
                 "lat": _location_value(location, "latitude"),
                 "lon": _location_value(location, "longitude"),
+                "has_place_details": bool(details_row),
                 "details_fetched_at": details_row.get("fetched_at", ""),
             }
         )
@@ -96,19 +124,42 @@ def _stable_poi_id(source_system: str, stable_source_key: str) -> str:
     return f"poi_{sha256(key.encode('utf-8')).hexdigest()[:16]}"
 
 
-def _json_array(values: pd.Series) -> str:
+def _json_array(values: pd.Series, split_delimiter: str | None = None) -> str:
     # Store multi-list fields as JSON text for now. This keeps dim_user_poi_v2
     # one-row-per-place while preserving source membership for later modeling.
     cleaned = []
     for value in values.fillna("").astype(str):
-        value = value.strip()
-        if value and value not in cleaned:
-            cleaned.append(value)
+        raw_items = [value]
+        if split_delimiter:
+            raw_items = str(value).split(split_delimiter)
+        for item in raw_items:
+            item = str(item).strip()
+            if item and item not in cleaned:
+                cleaned.append(item)
     return json.dumps(cleaned, ensure_ascii=False)
 
 
 def _fallback_category(category: str) -> str:
     return str(category).strip() or "other"
+
+
+def _fallback_text(value: str) -> str:
+    return str(value).strip()
+
+
+def _fallback_subcategory(category: str, subcategory: str) -> str:
+    cleaned_subcategory = str(subcategory).strip()
+    if cleaned_subcategory:
+        return cleaned_subcategory
+    return _fallback_category(category)
+
+
+def _first_token(value: str, delimiter: str = "|") -> str:
+    for token in str(value).split(delimiter):
+        token = token.strip()
+        if token:
+            return token
+    return ""
 
 
 def _location_value(location: Any, key: str) -> float | None:

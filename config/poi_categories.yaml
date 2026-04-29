@@ -1,18 +1,44 @@
 categories:
+  # --- Food & Drink (specific first to avoid false matches) ---
+  pizza:
+    - pizza
+  bakeries:
+    - bakery
+    - pastry
+    - patisserie
+  sandwiches:
+    - sandwich
+  coffee_shops:
+    - coffee
+    - cafe
+    - espresso
+  rest_chinese:
+    - chinese
+    - dim sum
+    - cantonese
+  rest_japanese:
+    - japanese
+    - sushi
+    - ramen
+    - izakaya
+  specialty_grocery:
+    - speciality
+    - specialty
+    - gourmet
+  # food_markets must come before groceries — both can match "market"
+  food_markets:
+    - market
+    - food hall
   restaurants:
     - restaurant
     - diner
-    - pizza
     - food
   bars:
     - bar
     - brewery
     - pub
     - cocktail
-  parks:
-    - park
-    - garden
-    - playground
+  # --- Culture & Entertainment ---
   bookstores:
     - bookstore
     - books
@@ -22,15 +48,101 @@ categories:
   museums:
     - museum
     - gallery
-  coffee_shops:
-    - coffee
-    - cafe
-    - espresso
+  movie_theaters:
+    - cinema
+    - movie
+    - theater
+  music_venues:
+    - venue
+    - concert
+    - music
+    - jazz
+  # --- Everyday & Outdoor ---
   groceries:
     - grocery
-    - market
     - supermarket
   shopping:
     - shop
     - store
     - mall
+  parks:
+    - park
+    - garden
+    - playground
+
+curated_taxonomy:
+  files:
+    poi_bookstores_nyc.csv:
+      category: bookstores
+      subcategory: independent_bookstores
+    poi_record_stores_nyc.csv:
+      category: record_stores
+      subcategory: record_stores
+    poi_museums_nyc.csv:
+      category: museums
+      subcategory: museums
+    poi_restaurants_nyc.csv:
+      category: restaurants
+      subcategory: ""
+      subcategory_from_tags_or_comment: true
+      detail_level_3_from_tags_or_comment: true
+    poi_pizza_nyc.csv:
+      category: restaurants
+      subcategory: pizza
+    poi_rest_chinese_nyc.csv:
+      category: restaurants
+      subcategory: chinese
+    poi_rest_japanese_nyc.csv:
+      category: restaurants
+      subcategory: japanese
+      detail_level_3_from_tags_or_comment: true
+    poi_sandwich_nyc.csv:
+      category: restaurants
+      subcategory: sandwiches
+      detail_level_3_from_tags_or_comment: true
+    poi_bars_nyc.csv:
+      category: bars
+      subcategory: bars
+      subcategory_from_tags_or_comment: true
+    poi_bakeries_nyc.csv:
+      category: bakeries
+      subcategory: bakeries
+    poi_cafe_nyc.csv:
+      category: coffee_shops
+      subcategory: coffee_shops
+    poi_markets_nyc.csv:
+      category: food_markets
+      subcategory: ""
+      detail_level_3_from_tags_or_comment: true
+    poi_speciality_food_market.csv:
+      category: specialty_grocery
+      subcategory: specialty_grocery
+    poi_movie_theaters_nyc.csv:
+      category: movie_theaters
+      subcategory: movie_theaters
+    poi_music_venue_nyc.csv:
+      category: music_venues
+      subcategory: ""
+      detail_level_3_from_tags_or_comment: true
+  tag_aliases:
+    bagels: bagels
+    brazilian: brazilian
+    chinese: chinese
+    club: club
+    deli: deli
+    greek: greek
+    indian: indian
+    irish: irish_pub
+    italian: italian
+    izakaya: izakaya
+    jazz: jazz
+    jewish: jewish
+    karaoke: karaoke
+    korean: korean
+    mexican: mexican
+    poke: poke
+    pizza: pizza
+    ramen: ramen
+    sushi: sushi
+    thai: thai
+    wine: wine_bar

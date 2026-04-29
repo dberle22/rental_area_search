@@ -18,6 +18,18 @@ TRACT_FEATURE_COLUMNS = [
     "median_age",
     "crime_rate_proxy",
 ]
+NTA_FEATURE_COLUMNS = [
+    "nta_id",
+    "nta_name",
+    "borough",
+    "tract_count",
+    "median_income",
+    "median_rent",
+    "median_home_value",
+    "pct_bachelors_plus",
+    "median_age",
+    "crime_rate_proxy",
+]
 NYC_CORE_COUNTY_GEOIDS = ("36047", "36061")
 
 
@@ -195,24 +207,13 @@ def add_missing_tract_feature_rows_from_mapping(
 
 
 def build_nta_features(tract_features: pd.DataFrame, tract_to_nta: pd.DataFrame) -> pd.DataFrame:
-    """Aggregate tract features into NTA-level MVP summaries."""
+    """Aggregate tract features into an NTA-native feature contract."""
 
     if tract_features.empty or tract_to_nta.empty:
-        return pd.DataFrame(
-            columns=[
-                "nta_id",
-                "nta_name",
-                "median_income",
-                "median_rent",
-                "median_home_value",
-                "pct_bachelors_plus",
-                "median_age",
-                "crime_rate_proxy",
-            ]
-        )
+        return pd.DataFrame(columns=NTA_FEATURE_COLUMNS)
 
     joined = tract_features.merge(
-        tract_to_nta[["tract_id", "nta_id", "nta_name"]].drop_duplicates("tract_id"),
+        tract_to_nta[["tract_id", "nta_id", "nta_name", "borough"]].drop_duplicates("tract_id"),
         on="tract_id",
         how="inner",
     )
@@ -226,11 +227,30 @@ def build_nta_features(tract_features: pd.DataFrame, tract_to_nta: pd.DataFrame)
     ]
     for metric in metrics:
         joined[metric] = pd.to_numeric(joined[metric], errors="coerce")
-    return (
-        joined.groupby(["nta_id", "nta_name"], dropna=False)[metrics]
-        .median()
+    aggregated = (
+        joined.groupby(["nta_id", "nta_name"], dropna=False)
+        .agg(
+            borough=("borough", _collapse_boroughs),
+            tract_count=("tract_id", "nunique"),
+            median_income=("median_income", "median"),
+            median_rent=("median_rent", "median"),
+            median_home_value=("median_home_value", "median"),
+            pct_bachelors_plus=("pct_bachelors_plus", "median"),
+            median_age=("median_age", "median"),
+            crime_rate_proxy=("crime_rate_proxy", "median"),
+        )
         .reset_index()
     )
+    return aggregated[NTA_FEATURE_COLUMNS]
+
+
+def _collapse_boroughs(values: pd.Series) -> str | pd.NA:
+    """Return one stable borough label per NTA, joining cross-borough cases."""
+
+    unique_values = sorted({str(value).strip() for value in values if str(value).strip()})
+    if not unique_values:
+        return pd.NA
+    return " / ".join(unique_values)
 
 
 def write_neighborhood_features(

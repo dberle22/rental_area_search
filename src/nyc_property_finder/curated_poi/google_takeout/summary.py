@@ -8,9 +8,9 @@ from typing import Any
 
 import pandas as pd
 
-from nyc_property_finder.google_places_poi.build_dim import build_dim_user_poi_v2
-from nyc_property_finder.google_places_poi.cache import read_resolution_cache
-from nyc_property_finder.google_places_poi.config import (
+from nyc_property_finder.curated_poi.google_takeout.build_dim import build_dim_user_poi_v2
+from nyc_property_finder.curated_poi.google_takeout.cache import read_resolution_cache
+from nyc_property_finder.curated_poi.google_takeout.config import (
     DEFAULT_DETAILS_CACHE_PATH,
     DEFAULT_GOOGLE_PLACES_INTERIM_DIR,
     DEFAULT_RESOLUTION_CACHE_PATH,
@@ -24,13 +24,17 @@ DEFAULT_QA_PATH = DEFAULT_GOOGLE_PLACES_INTERIM_DIR / "place_pipeline_qa.csv"
 def build_summary(
     resolution_cache_path: str | Path = DEFAULT_RESOLUTION_CACHE_PATH,
     details_cache_path: str | Path = DEFAULT_DETAILS_CACHE_PATH,
+    source_record_ids: set[str] | None = None,
 ) -> dict[str, Any]:
     """Build count-based QA from cache artifacts and the v2 dim output."""
 
     resolution_cache = read_resolution_cache(resolution_cache_path)
+    if source_record_ids is not None:
+        resolution_cache = resolution_cache[resolution_cache["source_record_id"].isin(source_record_ids)].copy()
     dim = build_dim_user_poi_v2(
         resolution_cache_path=resolution_cache_path,
         details_cache_path=details_cache_path,
+        source_record_ids=source_record_ids,
     )
     duplicate_groups = _duplicate_place_groups(resolution_cache)
     missing_coordinates = dim[dim[["lat", "lon"]].isna().any(axis=1)] if not dim.empty else dim
@@ -74,15 +78,19 @@ def write_qa_csv(
     resolution_cache_path: str | Path = DEFAULT_RESOLUTION_CACHE_PATH,
     details_cache_path: str | Path = DEFAULT_DETAILS_CACHE_PATH,
     path: str | Path = DEFAULT_QA_PATH,
+    source_record_ids: set[str] | None = None,
 ) -> None:
     """Write a human-readable QA CSV for duplicates and missing coordinates."""
 
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     resolution_cache = read_resolution_cache(resolution_cache_path)
+    if source_record_ids is not None:
+        resolution_cache = resolution_cache[resolution_cache["source_record_id"].isin(source_record_ids)].copy()
     dim = build_dim_user_poi_v2(
         resolution_cache_path=resolution_cache_path,
         details_cache_path=details_cache_path,
+        source_record_ids=source_record_ids,
     )
     duplicate_groups = _duplicate_place_groups(resolution_cache)
 

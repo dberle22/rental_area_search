@@ -1,147 +1,289 @@
 # Architecture
 
-NYC Property Finder follows a lightweight three part organization: Data Platform, Data Processing, and Frontend Applications.
+Neighborhood Explorer is a local NYC property research tool. It combines
+demographic neighborhood context, baseline public amenity data, personal
+curated places, and property listings into a single DuckDB database that powers
+two Streamlit apps.
 
-For table-level contracts, source coverage, and build entrypoints, use
-`docs/data_model.md` as the primary reference. `docs/source_inventory.md`
-contains the longer source notes: external URLs, local path conventions,
-selected MVP sources, and deferred data ideas. `docs/pipeline_plan.md` is the
-current operational build runbook.
+The system has three layers: a **Data Platform** (what data we have and where
+it lives), **Pipelines** (how raw sources become app-ready tables), and
+**Frontend Applications** (what the user sees).
 
+For table-level contracts use `docs/data_model.md`. For the operational build
+runbook use `docs/pipeline_plan.md`. For POI category definitions and ingestion
+status use `docs/poi_categories.md`.
+
+---
 
 ## Data Platform
 
-The Data Platform follows a lightweight medallion pattern for data processing:
+Four data domains each write into `property_explorer_gold` in DuckDB. The
+database lives at `data/processed/nyc_property_finder.duckdb` (local only,
+not committed).
 
-- Bronze: Raw files and API exports (e.g., CSV, GeoJSON, KML from sources like Google Maps or MTA).
-- Silver: Cleaned, source-specific tables with basic normalization.
-- Gold: Analytics-ready dimensions and facts for app consumption.
+### Foundational Demographics
 
-DuckDB serves as the local analytical database, with GeoPandas handling spatial operations (e.g., geometry calculations) before storing results as WKT in DuckDB. This architecture supports local, file-backed data for the MVP, prioritizing reproducibility over real-time ingestion.
+Census tract and NTA (Neighborhood Tabulation Area) geometry and metrics.
+This is the base layer for all neighborhood comparisons and property context.
 
-Data is split into foundational layers (base geography and demographics) and user-facing points (properties and POIs). All data flows through the medallion layers into DuckDB schemas like `property_explorer_gold` for app-ready tables. See `data_model.md` for detailed table contracts, validation rules, source coverage, and build entrypoints.
+| Table | Contents |
+| --- | --- |
+| `dim_tract_to_nta` | Crosswalk from census tract GEOID to NTA name and ID |
+| `fct_tract_features` | Tract-level metrics: income, rent, home value, education, age |
+| `fct_nta_features` | NTA-level aggregated metrics plus neighborhood-native metadata (`borough`, `tract_count`) |
 
-1. Foundations
-    - Tracts
-    - Neighborhoods
-    - Counties
-    - Foundational Points: Subways, Parks, etc. These are points of interest with public entry points such as subways.
-2. User-facing Points
-    - Properties
-        - Rentals
-        - Sales
-    - Points of Interest
-        - Museums
-        - Restaurants
-        - Bars
-        - Shops
-        - Etc
+Geometry (census tracts, NTA boundaries) is loaded at runtime from
+`data/raw/geography/` and is not stored as a DuckDB table.
 
-### Core Foundational Data
-These are the base layers for geography and context, enabling aggregation and filtering across tracts, neighborhoods, and counties.
+Status: active. Current coverage is all five boroughs. The tract geometry file
+now contains 2,325 tract shapes, while the current feature tables materialize
+2,327 tract rows and 262 NTA rows from Metro Deep Dive. That small tract count
+mismatch is expected because the shoreline-clipped tract geometry excludes a
+couple of water-only feature rows. Source: Metro Deep Dive DuckDB, path
+configured in local-only `config/data_sources.yaml`.
 
-#### Tracts
-Demographic features (e.g., income, population, age from ACS data via Metro Deep Dive) and geometry (from census tract boundaries). Includes crosswalks to neighborhoods and counties for roll-ups.
+### Public POI Baseline
 
-The main products in this layer are:
+Official and open-source place data for transit, parks, everyday retail, civic
+facilities, and cultural institutions. This tier answers coverage questions:
+"Is there a grocery store within 10 minutes?" rather than "Is it a good one?"
 
-- tracts_features - refer to sql/gold/fct_tract_features.sql for reference
-- tracts_geom - see data/raw/geography/census_tracts.geojson for tracts
-- tracts_counties_xwalk - exists in Metro Deep Dive DuckDB
-- tracts_neighborhood_xwalk - see data/raw/geography/tract_to_nta_equivalency.csv
+| Table | Contents |
+| --- | --- |
+| `dim_public_poi` | 56,540 rows across 27 categories, all with coordinates |
 
-#### Neighborhoods
-Aggregated tract data into Neighborhood Tabulation Areas (NTAs) for user-facing summaries (e.g., median rent by area).
+Status: complete. All 5 ingestion waves finished 2026-04-23. See
+`docs/poi_categories.md` for the full category list, source datasets, and row
+counts.
 
-Sourced from Tract Crosswalks and NTA boundaries. Built using sql/gold/fct_nta_features.sql for reference.
+### Curated POI
 
-#### Counties
-Borough-level (e.g., Brooklyn, Manhattan) for high-level filtering. Acts as the lowest aggregation level.
-Sources: Tract-to-county mappings.
-Tables: Crosswalks in tract tables (no dedicated county table yet).
-Reference: Tract crosswalks in data/interim/processed/nyc_property_finder.duckdb.
+Personal, taste-driven place lists — bookstores, record stores, restaurants,
+bars, music venues, etc. This tier answers curation questions: "Is there a
+great natural wine bar nearby?" Sources are personal Google Maps saved lists,
+editorial article scrapes, and crowd-sourced Excel uploads.
 
-#### Foundational Points
-Public infrastructure like subway stops and parks for mobility and context.
+| Table | Contents |
+| --- | --- |
+| `dim_user_poi_v2` | Curated POIs with Google Places-backed coordinates plus category, subcategory, and flexible descriptor tags |
 
-Sources: MTA for subways; future open-source points (not yet implemented).
-Tables: property_explorer_gold.dim_subway_stop.
-Reference: src/nyc_property_finder/pipelines/ingest_subway_stops.py
+Status: active development. Three legacy categories loaded (37 bookstores, 29
+record stores, 25 museums). Fifteen new `poi_nyc/` CSVs are raw and pending
+ingestion on the `curated-poi-ingestion` branch. Scraping and Excel upload
+paths are planned but not yet built. See `docs/poi_categories.md` for full
+status.
 
-### POI and Property Layer
-These layers add point-based data for exploration, including geocoding from addresses to coordinates.
+### Real Estate Listings
 
-#### Property
-Rental and sale listings with details like price, beds, and availability. Geocoded from addresses; failed geocodes quarantined.
-Sources: Manual CSV/JSON (MVP), StreetEasy/RentHop scrapers.
-Tables: property_explorer_gold.dim_property_listing, fct_property_context.
-Reference: data_model.md for listing contract; scrapers for scraping logic.
+Property listings with price, beds, baths, address, and source URL, enriched
+with tract/NTA assignment, subway distance, nearby POI counts, and a composite
+score.
 
-#### Points of Interest
-User-curated locations (e.g., bars, restaurants, museums) from Google Maps, plus public points (subways, parks).
-Sources: Google Maps Takeout or saved-list exports (KML/JSON/CSV), with NYC GeoSearch fallback for saved-list CSVs that only include names and URLs. Google Places API resolution is post-MVP.
-Tables: property_explorer_gold.dim_user_poi.
-Reference: poi_categories.yaml for categories; ingest_google_maps.py.
+| Table | Contents |
+| --- | --- |
+| `dim_property_listing` | Property listings with coordinates |
+| `fct_property_context` | Listings joined to geography, transit, POIs, and scores |
 
-## Data Processing
-Pipelines ingest raw data into bronze, transform it through silver, and materialize gold tables. Scripts are Python-based under src/nyc_property_finder/pipelines, with notebooks for exploration. MVP focuses on file-backed, deterministic runs. See pipeline_plan.md for build steps.
+Status: placeholder. A minimal 22-row sample exists for app validation.
+Scraping adapters for StreetEasy and RentHop are scaffolded but not yet built.
+Manual CSV ingestion is the current working path.
 
-### Ingestion Scripts
-These pull raw data into bronze tables, normalizing formats like CSV or GeoJSON.
+---
 
-Reference: data_sources.yaml for source configs; data/raw for inputs.
+## Pipelines
 
-#### Subway Stops
-Ingests MTA data for transit points.
-Script: ingest_subway_stops.py.
-Output: Bronze subway table.
+Pipelines read from `data/raw/` and write app-ready tables to DuckDB. Each
+subject area below has its own ingestion concerns and refresh cadence.
 
-#### POI Processing (Google Maps)
-Processes user exports for personal locations.
-Script: ingest_google_maps.py.
-Output: Bronze POI table.
+`init_database` must run first on any new machine to create DuckDB schemas and
+tables:
 
-#### Property Data
-Handles listings from files or scrapers (StreetEasy, RentHop).
-Scripts: ingest_property_file.py, ingest_property_streeteasy.py, ingest_property_renthop.py.
-Output: Bronze property table with geocoding.
+```bash
+PYTHONPATH=src .venv/bin/python -m nyc_property_finder.pipelines.init_database
+```
 
-### Transformations
+See `docs/pipeline_plan.md` for the full build order and commands.
 
-#### Tract to NTA
-Builds geography crosswalks.
-Script: build_tract_to_nta.py.
-Output: dim_tract_to_nta.
+### Demographic Data Foundations
 
-#### Neighborhood Features
-Aggregates tract metrics to NTAs.
-Script: build_neighborhood_features.py.
-Output: fct_nta_features.
+Builds the geography crosswalk and tract/NTA metrics that underpin all
+neighborhood context.
 
-#### Property Context
-Scores listings with nearby POIs and context.
-Script: build_property_context.py.
-Output: fct_property_context.
-Reference: scoring_weights.yaml for scoring logic.
+| Step | Script | Status | Output |
+| --- | --- | --- | --- |
+| Tract-to-NTA mapping | `pipelines/build_tract_to_nta.py` | active | `dim_tract_to_nta` |
+| Neighborhood features | `pipelines/build_neighborhood_features.py` | active | `fct_tract_features`, `fct_nta_features` |
 
-#### Database Init
-Sets up schemas and tables.
-Script: init_database.py.
+Raw inputs: `data/raw/geography/tract_to_nta_equivalency.csv`,
+`data/raw/geography/census_tracts.geojson`, Metro Deep Dive DuckDB (local path
+in `config/data_sources.yaml`).
 
-Note: Notebooks (e.g., 02_tract_to_nta_mapping.ipynb) explore logic but production code lives in src. Detailed build order and commands live in pipeline_plan.md.
+### Public POI
 
-## Frontend Application
-Two Streamlit apps consume gold tables for exploration. Both use PyDeck for maps and DuckDB for queries. See planning/build_plan.md for the broader MVP workflow history.
+A single pipeline entry point (`ingest_public_poi`) runs all source modules in
+wave order and replaces `dim_public_poi` on each full run. Source modules live
+in `src/nyc_property_finder/public_poi/sources/`. Snapshots are dated files
+under `data/raw/public_poi/`; today's files are reused if they exist.
 
-### Property Search Helper
-Interactive app for evaluating listings: map view with filters (price, beds, borough), sorting by scores, property details (nearby POIs, subway), and shortlist for comparison.
-Code: app/streamlit_app.py and src/nyc_property_finder/app/explorer.py.
-Data: Pulls from dim_property_listing, fct_property_context.
+| Wave | Categories | Source modules | Status |
+| --- | --- | --- | --- |
+| 1 — Transit | subway stations/lines, bus stops, Citi Bike, ferry terminals, PATH stations, bike lanes | `mta_subway.py`, `mta_bus.py`, `gbfs_citibike.py`, `ferry_path.py`, `nyc_open_data.py` | complete |
+| 2 — Parks & Recreation | parks, playgrounds, dog runs | `nyc_open_data.py` | complete |
+| 3 — Everyday Retail | grocery stores, pharmacies, laundromats, dry cleaners, banks, ATMs, hardware stores | `nyc_open_data.py`, `osm.py` | complete |
+| 4 — Civic & Community | public libraries (NYPL/BPL/QPL), post offices, public schools, farmers markets, hospitals, urgent care, gyms | `nypl_api.py`, `nyc_open_data.py`, `osm.py` | complete |
+| 5 — Culture & Heritage | landmarks, historic districts, institutional museums, public art | `nyc_open_data.py` | complete |
 
-### Neighborhood Explorer
-Base map for browsing tracts/NTAs: demographic layers (income, age), borough filters, no properties. This app can render boundaries even when demographic metrics are still null.
-Code: app/streamlit_app_v2.py and src/nyc_property_finder/app/base_map.py.
-Data: Pulls from fct_tract_features, fct_nta_features.
+Entry point: `pipelines/ingest_public_poi.py`
 
-### Data Flow and Integration
-Data starts in raw, flows through pipelines (ingestion → transformation) into nyc_property_finder.duckdb, and feeds apps. Geocoding and scoring happen mid-flow; quarantine files handle errors. For reproducibility, run pipelines in order (e.g., init DB first). Future: CLI orchestration (not yet implemented).
+### Curated POI
+
+Curated POI code now lives under `src/nyc_property_finder/curated_poi/`.
+Each ingestion path gets its own subpackage, while `public_poi/` remains a
+separate baseline-data system. All curated paths are expected to normalize into
+the same taxonomy contract and write to `dim_user_poi_v2`.
+
+Current curated package layout:
+
+| Package | Purpose | Status |
+| --- | --- | --- |
+| `curated_poi/google_takeout/` | Google Takeout saved-list ingestion, cache-first Places resolution, dry-run planning, and `dim_user_poi_v2` build | active |
+| `curated_poi/web_scraping/` | Editorial article extraction and normalization into curated POI inputs | planned |
+| `curated_poi/excel_upload/` | Shared Excel or CSV submission workflow into curated POI inputs | planned |
+| `curated_poi/shared/` | Shared helpers meant to be reused across curated POI source paths | reserved |
+
+#### Google Takeout (active)
+
+Personal Google Maps saved lists exported via Google Takeout, processed through
+a resolve → enrich → deduplicate pipeline.
+
+Raw files: `data/raw/google_maps/poi_nyc/poi_<category>_nyc.csv`
+
+| Step | Script | Status |
+| --- | --- | --- |
+| Parse Takeout CSVs | `curated_poi/google_takeout/parse_takeout.py` | active |
+| Resolve to Place IDs | `curated_poi/google_takeout/resolve.py` | active — cache-first, API call caps |
+| Enrich with details | `curated_poi/google_takeout/enrich.py` | active |
+| Dry-run planning | `curated_poi/google_takeout/dry_run.py` | active |
+| Write `dim_user_poi_v2` | `curated_poi/google_takeout/build_dim.py` | active |
+
+Primary entry point: `pipelines/ingest_curated_poi_google_takeout.py`
+
+Compatibility alias: `pipelines/ingest_google_places_poi.py`
+
+#### Article Scraping (planned)
+
+Identify editorial articles (Eater NYC maps, NYT lists, Pitchfork guides, etc.)
+and extract place name + metadata via custom scripts or LLM-assisted scraping.
+Output normalized to `data/raw/scraped/<category>_<source>_<date>.csv`, then
+fed into the same Places API resolve/enrich step as Takeout.
+
+Status: package path reserved at `curated_poi/web_scraping/`, implementation
+not yet built. See `docs/poi_categories.md` for the target article list per
+category.
+
+#### Public Excel Upload (planned)
+
+A shared Excel/CSV template where collaborators can submit places. Output
+normalized to `data/raw/public_submissions/` and fed into the resolve/enrich
+step.
+
+Status: package path reserved at `curated_poi/excel_upload/`, implementation
+not yet built.
+
+### Properties
+
+Two ingestion paths and one enrichment step feed the property tables.
+
+#### Manual CSV (active — placeholder)
+
+Hand-curated listings CSV ingested directly into `dim_property_listing`.
+
+| Step | Script | Status |
+| --- | --- | --- |
+| Ingest listing file | `pipelines/ingest_property_file.py` | active — minimal 22-row sample |
+
+Raw input: `data/raw/listings_sample.csv`
+
+#### Scraping (planned)
+
+Source-specific adapters for StreetEasy and RentHop. Scripts are scaffolded but
+not built. Legal/terms review required before implementation.
+
+| Step | Script | Status |
+| --- | --- | --- |
+| StreetEasy adapter | `pipelines/ingest_property_streeteasy.py` | planned — not built |
+| RentHop adapter | `pipelines/ingest_property_renthop.py` | planned — not built |
+
+#### Property Context Enrichment (active)
+
+Joins listings to geography, transit, POIs, and neighborhood metrics to produce
+the scored context table.
+
+| Step | Script | Status |
+| --- | --- | --- |
+| Build property context | `pipelines/build_property_context.py` | active |
+
+Output: `fct_property_context`
+
+---
+
+## Frontend Applications
+
+### Neighborhood Explorer V2 — main focus
+
+Interactive map for browsing NYC tracts and neighborhoods. Combines demographic
+overlays, POI layers, and eventually listing context.
+
+| | |
+| --- | --- |
+| Entry point | `app/streamlit_app_v2.py` |
+| Core logic | `src/nyc_property_finder/app/base_map.py` |
+| Data consumed | `fct_tract_features`, `fct_nta_features`, `dim_user_poi_v2`, `dim_public_poi` |
+| Review | `docs/neighborhood_explorer_app_review.md` |
+
+Current capabilities: tract and NTA geography across all five boroughs,
+selectable demographic metrics, POI overlays filterable by source type and
+category, neighborhood-first defaults, richer polygon tooltips, and
+missing-data handling. Public POIs are kept off on first load and lazy-loaded
+when the toggle is enabled so the initial map draw stays focused on curated
+places.
+
+Current coverage is all five boroughs. The default app state is neighborhood
+geography, curated POIs on, public POIs off, and `subway_station` as the
+initial public overlay category once enabled.
+
+Recent performance refactor: the expensive tract/NTA geometry assembly is now
+cached separately from metric-specific formatting, so metric switches are fast
+after the first geography load. A timing pass on 2026-04-28 showed roughly
+`1.37s` for the shared geography load, `0.04s` for a metric rebuild from that
+cached geography object, `0.07s` for curated POI loading, and `0.06s` for a
+single-category public POI load.
+
+### Neighborhood QA App
+
+Companion tool for reviewing data coverage: tract and NTA metric gaps, POI
+counts, build state. Not user-facing.
+
+| | |
+| --- | --- |
+| Entry point | `app/neighborhood_qa_app.py` |
+
+### Property Search Helper V1 — on ice
+
+Original property listing explorer with map, filters, and shortlist. Paused
+while V2 is the development focus.
+
+| | |
+| --- | --- |
+| Entry point | `app/streamlit_app.py` |
+| Core logic | `src/nyc_property_finder/app/explorer.py` |
+
+---
+
+## Stack
+
+- **Database**: DuckDB (`property_explorer_gold` schema)
+- **Spatial operations**: GeoPandas / Shapely; results stored as WKT in DuckDB
+- **Pipelines**: Python, under `src/nyc_property_finder/`
+- **Frontend**: Streamlit + PyDeck
+- **POI resolution**: Google Places API v2 (Text Search + Place Details), cache-first

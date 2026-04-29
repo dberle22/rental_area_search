@@ -9,14 +9,14 @@ from typing import Any
 
 import pandas as pd
 
-from nyc_property_finder.google_places_poi.cache import (
+from nyc_property_finder.curated_poi.google_takeout.cache import (
     RESOLUTION_CACHE_COLUMNS,
     merge_resolution_cache,
     read_resolution_cache,
     write_resolution_cache,
 )
-from nyc_property_finder.google_places_poi.client import search_text_place_id
-from nyc_property_finder.google_places_poi.config import (
+from nyc_property_finder.curated_poi.google_takeout.client import search_text_place_id
+from nyc_property_finder.curated_poi.google_takeout.config import (
     DEFAULT_API_KEYS_PATH,
     DEFAULT_ENV_PATH,
     DEFAULT_MAX_TEXT_SEARCH_CALLS,
@@ -24,7 +24,7 @@ from nyc_property_finder.google_places_poi.config import (
     DEFAULT_SEARCH_CONTEXT,
     get_google_maps_api_key,
 )
-from nyc_property_finder.google_places_poi.parse_takeout import parse_google_places_saved_list_csv
+from nyc_property_finder.curated_poi.google_takeout.parse_takeout import parse_google_places_saved_list_csv
 
 
 ResolutionFetcher = Callable[[str, str], dict[str, Any]]
@@ -124,6 +124,8 @@ def _build_resolution_cache_row(source_row: dict[str, Any], result: dict[str, An
         "source_file": str(source_row.get("source_file", "")),
         "source_list_name": str(source_row.get("source_list_name", "")),
         "category": str(source_row.get("category", "")),
+        "subcategory": str(source_row.get("subcategory", "")),
+        "detail_level_3": str(source_row.get("detail_level_3", "")),
         "input_title": str(source_row.get("input_title", "")),
         "note": str(source_row.get("note", "")),
         "tags": str(source_row.get("tags", "")),
@@ -146,6 +148,8 @@ def _refresh_cache_source_metadata(cache: pd.DataFrame, parsed: pd.DataFrame) ->
         "source_file",
         "source_list_name",
         "category",
+        "subcategory",
+        "detail_level_3",
         "input_title",
         "note",
         "tags",

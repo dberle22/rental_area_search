@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
 import re
 from hashlib import sha256
 from pathlib import Path
@@ -9,7 +10,8 @@ from urllib.parse import unquote
 
 import pandas as pd
 
-from nyc_property_finder.google_places_poi.config import DEFAULT_SEARCH_CONTEXT, SOURCE_SYSTEM
+from nyc_property_finder.curated_poi.google_takeout.config import DEFAULT_SEARCH_CONTEXT, SOURCE_SYSTEM
+from nyc_property_finder.services.config import DEFAULT_CONFIG_DIR, load_yaml
 
 
 TAKEOUT_COLUMNS = ("Title", "Note", "URL", "Tags", "Comment")
@@ -44,9 +46,18 @@ def parse_google_places_saved_list_csv(
     output["source_system"] = SOURCE_SYSTEM
     output["source_file"] = path.name
     output["source_list_name"] = source_list_name
-    # Categories are intentionally list-derived in v2. A proper category
-    # dimension can replace this later without changing raw Takeout parsing.
-    output["category"] = clean_list_category(source_list_name)
+    taxonomy = output.apply(
+        lambda row: pd.Series(
+            normalize_curated_taxonomy(
+                source_file=path.name,
+                source_list_name=source_list_name,
+                tags=row["tags"],
+                comment=row["comment"],
+            )
+        ),
+        axis=1,
+    )
+    output = pd.concat([output, taxonomy], axis=1)
     output["search_query"] = output["input_title"].map(lambda title: build_search_query(title, search_context))
     output["source_record_id"] = output.apply(
         lambda row: _stable_source_record_id(
@@ -65,6 +76,8 @@ def parse_google_places_saved_list_csv(
             "source_file",
             "source_list_name",
             "category",
+            "subcategory",
+            "detail_level_3",
             "input_title",
             "note",
             "tags",
@@ -75,14 +88,23 @@ def parse_google_places_saved_list_csv(
     ]
 
 
-def build_search_query(title: str, search_context: str = DEFAULT_SEARCH_CONTEXT) -> str:
-    """Build the first-pass low-cost text search query."""
+def build_search_query(
+    title: str,
+    search_context: str = DEFAULT_SEARCH_CONTEXT,
+    address: str = "",
+) -> str:
+    """Build the first-pass text search query.
+
+    When a source provides an exact address, prefer it because it materially
+    improves match quality for multi-location brands and later scrape/manual
+    ingestion paths.
+    """
 
     title = " ".join(str(title).split())
+    address = " ".join(str(address).split())
     search_context = " ".join(str(search_context).split())
-    if not search_context:
-        return title
-    return f"{title} {search_context}".strip()
+    query_parts = [part for part in (title, address, search_context) if part]
+    return " ".join(query_parts).strip()
 
 
 def clean_list_category(list_name: str) -> str:
@@ -96,6 +118,41 @@ def clean_list_category(list_name: str) -> str:
     return cleaned or "other"
 
 
+def normalize_curated_taxonomy(
+    source_file: str,
+    source_list_name: str,
+    tags: str = "",
+    comment: str = "",
+) -> dict[str, str]:
+    """Assign category hierarchy for one curated source row."""
+
+    taxonomy_config = _curated_taxonomy_config()
+    file_rules = taxonomy_config.get("files", {})
+    rule = file_rules.get(str(source_file).strip(), {})
+    category = str(rule.get("category", "")).strip()
+    subcategory = str(rule.get("subcategory", "")).strip()
+    detail_level_3_tokens = _taxonomy_tokens(str(rule.get("detail_level_3", "")).strip())
+
+    if not category:
+        category = clean_list_category(source_list_name)
+
+    tag_aliases = _taxonomy_tag_aliases(tags=tags, comment=comment)
+    if rule.get("subcategory_from_tags_or_comment") and tag_aliases:
+        subcategory = tag_aliases[0]
+    elif not subcategory:
+        subcategory = category
+    if rule.get("detail_level_3_from_tags_or_comment"):
+        for alias in tag_aliases:
+            if alias not in detail_level_3_tokens:
+                detail_level_3_tokens.append(alias)
+
+    return {
+        "category": category or "other",
+        "subcategory": subcategory or "",
+        "detail_level_3": "|".join(detail_level_3_tokens),
+    }
+
+
 def _read_takeout_csv(path: Path) -> pd.DataFrame:
     # Some Google exports include a first descriptive line before the real CSV
     # header. Try the normal header first, then a one-line offset.
@@ -106,6 +163,37 @@ def _read_takeout_csv(path: Path) -> pd.DataFrame:
     if "Title" not in rows.columns:
         raise ValueError(f"Google Maps CSV missing Title column: {path}")
     return rows
+
+
+@lru_cache(maxsize=1)
+def _curated_taxonomy_config() -> dict[str, object]:
+    config = load_yaml(DEFAULT_CONFIG_DIR / "poi_categories.yaml")
+    taxonomy = config.get("curated_taxonomy", {})
+    return taxonomy if isinstance(taxonomy, dict) else {}
+
+
+def _taxonomy_tag_aliases(tags: str, comment: str) -> list[str]:
+    aliases = _curated_taxonomy_config().get("tag_aliases", {})
+    if not isinstance(aliases, dict):
+        return []
+
+    resolved: list[str] = []
+    for candidate in _taxonomy_tokens(tags) + _taxonomy_tokens(comment):
+        alias = aliases.get(candidate)
+        if isinstance(alias, str):
+            alias = alias.strip()
+            if alias and alias not in resolved:
+                resolved.append(alias)
+    return resolved
+
+
+def _taxonomy_tokens(value: str) -> list[str]:
+    tokens: list[str] = []
+    for raw_token in re.split(r"[;,/|]", str(value).lower()):
+        cleaned = re.sub(r"[^a-z0-9]+", "_", raw_token).strip("_")
+        if cleaned and cleaned not in tokens:
+            tokens.append(cleaned)
+    return tokens
 
 
 def _stable_source_record_id(
