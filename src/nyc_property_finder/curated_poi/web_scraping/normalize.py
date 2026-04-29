@@ -69,3 +69,13 @@ def write_normalized_scrape_csv(frame: pd.DataFrame, path: str | Path) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     frame.to_csv(output_path, index=False)
     return output_path
+
+
+def read_normalized_scrape_csv(path: str | Path) -> pd.DataFrame:
+    """Read one normalized scrape CSV back into the shared contract."""
+
+    frame = pd.read_csv(path, dtype=str).fillna("")
+    for column in NORMALIZED_SCRAPE_COLUMNS:
+        if column not in frame.columns:
+            frame[column] = ""
+    return frame[NORMALIZED_SCRAPE_COLUMNS]

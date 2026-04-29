@@ -18,7 +18,7 @@ def test_eater_registry_contains_locked_articles() -> None:
     ]
     assert get_article("eater", "best-jewish-appetizing-shop-deli-nyc").subcategory == "jewish"
     assert get_article("eater", "best-live-music-restaurants-bars-nyc").detail_level_3 == "live_music"
-    assert get_article("eater", "best-bakeries-nyc").status == "registered"
+    assert get_article("eater", "best-bakeries-nyc").status == "loaded"
 
 
 def test_parse_eater_article_extracts_rows_and_splits_multi_address_mentions() -> None:
@@ -113,6 +113,69 @@ def test_build_normalized_scrape_dataframe_maps_to_shared_contract() -> None:
     assert row["comment"] == "An iconic appetizing shop."
     assert row["search_query"] == "Russ & Daughters 179 E Houston St, New York, NY 10002 New York, NY"
     assert row["source_record_id"].startswith("src_")
+
+
+def test_parse_eater_article_reads_next_data_map_points_when_live_html_uses_react_payload() -> None:
+    article = get_article("eater", "best-bakeries-nyc")
+    html = """
+    <html>
+      <head>
+        <script type="application/ld+json">
+          {
+            "@type": "ItemList",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "item": {
+                  "name": "Orwasher’s Bakery",
+                  "url": "https://ny.eater.com/maps/best-bakeries-nyc#orwashers-bakery"
+                }
+              }
+            ]
+          }
+        </script>
+        <script id="__NEXT_DATA__" type="application/json">
+          {
+            "props": {
+              "pageProps": {
+                "hydration": {
+                  "responses": [
+                    {
+                      "data": {
+                        "node": {
+                          "mapPoints": [
+                            {
+                              "name": "Orwasher’s Bakery",
+                              "address": "308 E 78th St, New York, NY 10075, USA",
+                              "description": [
+                                {"plaintext": "Historic Upper East Side bakery known for breads and babka."}
+                              ],
+                              "venue": {
+                                "slug": "orwashers-bakery"
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        </script>
+      </head>
+      <body></body>
+    </html>
+    """
+
+    rows = parse_article(html, article)
+
+    assert len(rows) == 1
+    assert rows[0].item_name == "Orwasher’s Bakery"
+    assert rows[0].raw_address == "308 E 78th St, New York, NY 10075, USA"
+    assert rows[0].raw_description == "Historic Upper East Side bakery known for breads and babka."
 
 
 def test_normalized_output_path_uses_locked_naming_convention() -> None:

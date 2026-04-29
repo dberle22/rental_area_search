@@ -30,11 +30,15 @@ The preferred CLI entry point is:
 nyc_property_finder.pipelines.ingest_curated_poi_google_takeout
 ```
 
-This pipeline writes:
+These pipelines write:
 
 ```text
 property_explorer_gold.dim_user_poi_v2
 ```
+
+The shared Google Places enrichment layer now requests a richer default Place
+Details payload, including rating, review count, business status, editorial
+summary, editorial summary language code, price level, and website URI.
 
 ## One-Time Setup
 
@@ -122,19 +126,32 @@ src/nyc_property_finder/curated_poi/web_scraping/
 
 ### Current first implementation
 
-The first live scraper scaffold is Eater. It supports:
+The parser-backed scraper scaffold now covers Eater and Time Out. It supports:
 
 - a locked Eater article registry
+- a locked Time Out article registry
 - a config-backed article inventory and status tracker
 - listing registered article slugs
 - parsing a saved local HTML file
 - optionally fetching a live article URL
 - writing one normalized CSV for QA review
 
-Entry point:
+Preferred generic export entry point:
+
+```text
+nyc_property_finder.pipelines.export_curated_poi_article
+```
+
+Compatibility alias kept for Eater:
 
 ```text
 nyc_property_finder.pipelines.export_curated_poi_eater_article
+```
+
+Preferred semi-manual export entry point:
+
+```text
+nyc_property_finder.pipelines.export_curated_poi_semi_manual_article
 ```
 
 ### File flow
@@ -176,6 +193,7 @@ resolve contract used downstream:
 - `comment` = `raw_description`
 - `source_url` = `article_url` or `item_url`
 - `search_query` = `item_name + raw_address + NYC context`
+  and when address is blank, append `raw_neighborhood` before the NYC context
 
 ### Taxonomy rules for scraped inputs
 
@@ -200,7 +218,8 @@ Review each normalized scrape file before a live resolve run:
 1. List the registered Eater articles:
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m nyc_property_finder.pipelines.export_curated_poi_eater_article \
+PYTHONPATH=src .venv/bin/python -m nyc_property_finder.pipelines.export_curated_poi_article \
+  --publisher-filter Eater \
   --list-articles
 ```
 
@@ -215,7 +234,7 @@ data/raw/scraped/raw/eater/<article_slug>_<date>.html
 3. Export one normalized review CSV from the saved HTML:
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m nyc_property_finder.pipelines.export_curated_poi_eater_article \
+PYTHONPATH=src .venv/bin/python -m nyc_property_finder.pipelines.export_curated_poi_article \
   --article-slug best-bakeries-nyc \
   --html data/raw/scraped/raw/eater/best-bakeries-nyc_2026-04-28.html
 ```
@@ -240,12 +259,22 @@ The article listing also includes each article's current scrape `status`.
 Optional live-fetch mode:
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m nyc_property_finder.pipelines.export_curated_poi_eater_article \
+PYTHONPATH=src .venv/bin/python -m nyc_property_finder.pipelines.export_curated_poi_article \
   --article-slug best-bakeries-nyc \
   --url https://ny.eater.com/maps/best-bakeries-nyc
 ```
 
 Use saved HTML by default when iterating so parser QA is reproducible.
+
+### Resolve One Normalized Scrape
+
+Once the normalized CSV looks correct, run it through the shared Google Places
+resolve/enrich path and merge it into curated staging plus canonical output:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m nyc_property_finder.pipelines.ingest_curated_poi_web_scrape \
+  --csv data/raw/scraped/normalized/bakeries_eater_best-bakeries-nyc_2026-04-28.csv
+```
 
 ## Dry Run A Batch
 
@@ -280,12 +309,13 @@ This flow:
 
 1. Parses every CSV in `data/raw/google_maps/poi_nyc/`
 2. Resolves rows to Google `place_id`s
-3. Fetches minimal Place Details for unique places
+3. Fetches cached or current-version Place Details for unique places
 4. Writes the current batch into `property_explorer_gold.stg_user_poi_google_takeout`
 5. Promotes that staged batch into canonical `property_explorer_gold.dim_user_poi_v2`
 
 The API calls are cache-first. Re-running the same inputs should make zero new
-API calls unless the inputs changed.
+API calls unless the inputs changed or an older cached details payload needs a
+versioned refresh.
 
 ## Run One CSV
 

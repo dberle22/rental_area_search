@@ -55,7 +55,14 @@ CREATE TABLE IF NOT EXISTS property_explorer_gold.dim_user_poi_v2 (
     lat DOUBLE,
     lon DOUBLE,
     has_place_details BOOLEAN,
-    details_fetched_at TIMESTAMP
+    details_fetched_at TIMESTAMP,
+    rating DOUBLE,
+    user_rating_count INTEGER,
+    business_status VARCHAR,
+    editorial_summary VARCHAR,
+    editorial_summary_language_code VARCHAR,
+    price_level VARCHAR,
+    website_uri VARCHAR
 );
 
 CREATE TABLE IF NOT EXISTS property_explorer_gold.stg_user_poi_google_takeout (
@@ -86,7 +93,14 @@ CREATE TABLE IF NOT EXISTS property_explorer_gold.stg_user_poi_google_takeout (
     lat DOUBLE,
     lon DOUBLE,
     has_place_details BOOLEAN,
-    details_fetched_at TIMESTAMP
+    details_fetched_at TIMESTAMP,
+    rating DOUBLE,
+    user_rating_count INTEGER,
+    business_status VARCHAR,
+    editorial_summary VARCHAR,
+    editorial_summary_language_code VARCHAR,
+    price_level VARCHAR,
+    website_uri VARCHAR
 );
 
 CREATE TABLE IF NOT EXISTS property_explorer_gold.stg_user_poi_web_scrape AS

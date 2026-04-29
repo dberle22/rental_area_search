@@ -49,3 +49,15 @@ def get_article(publisher: str, article_slug: str) -> ScrapedArticleConfig:
         if article.publisher.lower() == target_publisher and article.article_slug.lower() == target_slug:
             return article
     raise KeyError(f"Unknown scrape article: publisher={publisher!r}, article_slug={article_slug!r}")
+
+
+def get_article_by_slug(article_slug: str) -> ScrapedArticleConfig:
+    """Resolve one article config by slug across publishers."""
+
+    target_slug = article_slug.strip().lower()
+    matches = [article for article in ARTICLE_REGISTRY if article.article_slug.lower() == target_slug]
+    if not matches:
+        raise KeyError(f"Unknown scrape article slug: {article_slug!r}")
+    if len(matches) > 1:
+        raise KeyError(f"Article slug is not unique across publishers: {article_slug!r}")
+    return matches[0]

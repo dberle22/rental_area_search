@@ -221,7 +221,7 @@ Config note:
 | Time Out | parser | article list parser | restaurants / mixed_restaurants | Best Restaurants | https://www.timeout.com/newyork/restaurants/100-best-new-york-restaurants?utm_source=chatgpt.com | Priority launch article |
 | Vogue | parser | article list parser | shopping / vintage | Best Vintage | https://www.vogue.com/article/best-vintage-stores-in-new-york-city?utm_source=chatgpt.com | Promising parser candidate |
 | Vogue | parser | article list parser | shopping / shopping | Best Shopping | https://www.vogue.com/article/the-best-shopping-in-nyc-according-to-vogue-staffers?utm_source=chatgpt.com | Likely sparse on addresses |
-| Wanderlog | semi_manual | save text or HTML, then normalize | food_markets / food_markets | 50 Best Food Halls | https://wanderlog.com/list/geoCategory/872217/best-food-halls-market-halls-and-food-courts-in-new-york-city?utm_source=chatgpt.com | Lower confidence parser target |
+| Wanderlog | semi_manual | save text or HTML, then normalize | food_markets / food_markets | 50 Best Food Halls | https://wanderlog.com/list/geoCategory/872217/best-food-halls-market-halls-and-food-courts-in-new-york-city?utm_source=chatgpt.com | First semi-manual slice implemented; prefer HTML, use `wanderlog` extractor hints, fail fast below minimum candidate rows |
 | Michelin Guide | semi_manual | save text or HTML, then normalize | restaurants / mixed_restaurants | NYC List | https://guide.michelin.com/us/en/new-york-state/new-york/restaurants | JS-heavy; not first parser target |
 | Bon Appetit | semi_manual | save text or HTML, then normalize | restaurants / mixed_restaurants | 100 Restaurants | https://www.bonappetit.com/story/nyc100?utm_source=chatgpt.com | Likely one-off workflow |
 | NY Mag | semi_manual | save text or HTML, then normalize | restaurants / mixed_restaurants | 1000 Best | https://nymag.com/listings/search?utm_source%3Dchatgpt.com | Search/listing UX may complicate parser |
@@ -243,6 +243,21 @@ Config note:
 7. Update `config/poi_categories.yaml` and any pipeline normalization rules as needed.
 8. Run the appropriate curated pipeline.
 9. Update status to `loaded` with row counts after QA.
+
+## Semi-manual guidance
+
+- Semi-manual articles should use the dedicated
+  `nyc_property_finder.pipelines.export_curated_poi_semi_manual_article` CLI
+  rather than the parser-backed `export_curated_poi_article` path.
+- Both saved `html` and saved `text` inputs are first-class, but HTML is the
+  preferred default when both are available because it preserves more structure
+  for item URL inference and future parser upgrades.
+- Semi-manual article config may include sparse optional `semi_manual_hints`
+  so publisher-specific guidance is visible in config before we decide a source
+  deserves a full dedicated parser.
+- Current Wanderlog guidance: prefer HTML, use extractor family `wanderlog`,
+  infer nearby item URLs when simple, preserve borderline duplicates for review,
+  and fail fast when the capture produces almost no usable rows.
 
 ## How to Add a New Public Entry
 

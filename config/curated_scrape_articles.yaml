@@ -9,7 +9,7 @@ articles:
     detail_level_3: ""
     capture_mode: parser
     parser_name: eater
-    status: registered
+    status: loaded
 
   - publisher: Eater
     article_slug: best-babka-rugelach-jewish-bakeries-nyc
@@ -21,7 +21,7 @@ articles:
     detail_level_3: ""
     capture_mode: parser
     parser_name: eater
-    status: registered
+    status: loaded
 
   - publisher: Eater
     article_slug: best-jewish-appetizing-shop-deli-nyc
@@ -33,7 +33,7 @@ articles:
     detail_level_3: ""
     capture_mode: parser
     parser_name: eater
-    status: registered
+    status: loaded
 
   - publisher: Eater
     article_slug: best-live-music-restaurants-bars-nyc
@@ -45,7 +45,7 @@ articles:
     detail_level_3: live_music
     capture_mode: parser
     parser_name: eater
-    status: registered
+    status: loaded
 
   - publisher: Eater
     article_slug: best-new-york-restaurants-38-map
@@ -57,7 +57,7 @@ articles:
     detail_level_3: ""
     capture_mode: parser
     parser_name: eater
-    status: registered
+    status: loaded
 
   - publisher: Time Out
     article_slug: best-live-music-venues-in-new-york-city
@@ -69,7 +69,7 @@ articles:
     detail_level_3: ""
     capture_mode: parser
     parser_name: timeout
-    status: planned
+    status: loaded
 
   - publisher: Time Out
     article_slug: the-best-thrift-stores-in-new-york
@@ -81,7 +81,7 @@ articles:
     detail_level_3: ""
     capture_mode: parser
     parser_name: timeout
-    status: planned
+    status: loaded
 
   - publisher: Time Out
     article_slug: the-best-vintage-clothes-shops-in-new-york
@@ -93,7 +93,7 @@ articles:
     detail_level_3: ""
     capture_mode: parser
     parser_name: timeout
-    status: planned
+    status: loaded
 
   - publisher: Time Out
     article_slug: 100-best-new-york-restaurants
@@ -105,7 +105,7 @@ articles:
     detail_level_3: ""
     capture_mode: parser
     parser_name: timeout
-    status: planned
+    status: loaded
 
   - publisher: Vogue
     article_slug: best-vintage-stores-in-new-york-city
@@ -115,9 +115,14 @@ articles:
     category: shopping
     subcategory: vintage
     detail_level_3: ""
-    capture_mode: parser
-    parser_name: vogue
-    status: planned
+    capture_mode: semi_manual
+    parser_name: ""
+    status: loaded
+    semi_manual_hints:
+      preferred_input: html
+      extractor_family: vogue
+      infer_item_urls: true
+      min_candidate_rows: 10
 
   - publisher: Vogue
     article_slug: the-best-shopping-in-nyc-according-to-vogue-staffers
@@ -127,9 +132,14 @@ articles:
     category: shopping
     subcategory: shopping
     detail_level_3: ""
-    capture_mode: parser
-    parser_name: vogue
-    status: planned
+    capture_mode: semi_manual
+    parser_name: ""
+    status: loaded
+    semi_manual_hints:
+      preferred_input: html
+      extractor_family: vogue
+      infer_item_urls: true
+      min_candidate_rows: 25
 
   - publisher: Wanderlog
     article_slug: best-food-halls-market-halls-and-food-courts-in-new-york-city
@@ -141,7 +151,12 @@ articles:
     detail_level_3: ""
     capture_mode: semi_manual
     parser_name: ""
-    status: planned
+    status: loaded
+    semi_manual_hints:
+      preferred_input: html
+      extractor_family: wanderlog
+      infer_item_urls: true
+      min_candidate_rows: 10
 
   - publisher: Michelin Guide
     article_slug: new-york-restaurants
@@ -153,7 +168,12 @@ articles:
     detail_level_3: ""
     capture_mode: semi_manual
     parser_name: ""
-    status: planned
+    status: loaded
+    semi_manual_hints:
+      preferred_input: html
+      extractor_family: michelin
+      infer_item_urls: true
+      min_candidate_rows: 50
 
   - publisher: Bon Appetit
     article_slug: nyc100
@@ -165,7 +185,12 @@ articles:
     detail_level_3: ""
     capture_mode: semi_manual
     parser_name: ""
-    status: planned
+    status: loaded
+    semi_manual_hints:
+      preferred_input: html
+      extractor_family: bon_appetit
+      infer_item_urls: true
+      min_candidate_rows: 80
 
   - publisher: NY Mag
     article_slug: search-listings
@@ -177,7 +202,12 @@ articles:
     detail_level_3: ""
     capture_mode: semi_manual
     parser_name: ""
-    status: planned
+    status: loaded
+    semi_manual_hints:
+      preferred_input: html
+      extractor_family: ny_mag
+      listing_type: restaurant
+      min_candidate_rows: 500
 
   - publisher: Permanent Style
     article_slug: new-york-a-sartorial-city-guide

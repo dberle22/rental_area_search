@@ -24,6 +24,7 @@ DESCRIPTION_LINE_PATTERN = re.compile(
     r"(?:Why we love it|Why it matters|What to order)\s*:?[\s-]*(.*?)(?=$)",
     re.IGNORECASE,
 )
+NEXT_DATA_PATTERN = re.compile(r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>', re.DOTALL)
 
 
 @dataclass
@@ -126,12 +127,17 @@ def parse_article(html: str, article: ScrapedArticleConfig) -> list[ScrapedArtic
     parser.feed(html)
     parser.close()
     items = _extract_items_from_jsonld(parser.jsonld_chunks)
+    next_data_sections = _extract_sections_from_next_data(html)
     rows: list[ScrapedArticleRow] = []
 
     for item in items:
-        section = parser.sections.get(_slug_from_item_url(item.get("item_url", ""))) or parser.sections.get(
-            _slugify(item.get("name", ""))
+        section = next_data_sections.get(_slug_from_item_url(item.get("item_url", ""))) or parser.sections.get(
+            _slug_from_item_url(item.get("item_url", ""))
         )
+        if not section:
+            section = next_data_sections.get(_slugify(item.get("name", ""))) or parser.sections.get(
+                _slugify(item.get("name", ""))
+            )
         section = section or {}
         base_row = ScrapedArticleRow(
             item_name=item.get("name", ""),
@@ -139,6 +145,8 @@ def parse_article(html: str, article: ScrapedArticleConfig) -> list[ScrapedArtic
             item_url=item.get("item_url", ""),
             raw_address=section.get("address", ""),
             raw_description=section.get("description", ""),
+            raw_neighborhood=section.get("neighborhood", ""),
+            raw_borough=section.get("borough", ""),
         )
         rows.extend(_expand_multi_address_row(base_row))
     return rows
@@ -189,6 +197,41 @@ def _extract_description(section_text: str) -> str:
     return sentences[0].strip(" ,;") if sentences and sentences[0] else ""
 
 
+def _extract_sections_from_next_data(html: str) -> dict[str, dict[str, str]]:
+    match = NEXT_DATA_PATTERN.search(html)
+    if not match:
+        return {}
+
+    payload = _safe_json_loads(match.group(1))
+    if not isinstance(payload, dict):
+        return {}
+
+    map_points = _find_map_points(payload)
+    sections: dict[str, dict[str, str]] = {}
+    for point in map_points:
+        if not isinstance(point, dict):
+            continue
+        slug = _extract_point_slug(point)
+        if not slug:
+            continue
+        title = str(point.get("name", "") or "").strip()
+        description = _extract_point_description(point)
+        address = str(point.get("address", "") or "").strip()
+        neighborhood = _extract_point_neighborhood(point)
+        borough = _extract_point_borough(point)
+        section = {
+            "title": title,
+            "address": address,
+            "description": description,
+            "neighborhood": neighborhood,
+            "borough": borough,
+        }
+        sections[slug] = section
+        if title:
+            sections.setdefault(_slugify(title), section)
+    return sections
+
+
 def _expand_multi_address_row(row: ScrapedArticleRow) -> list[ScrapedArticleRow]:
     addresses = split_multi_location_address(row.raw_address)
     if addresses == [""] or len(addresses) == 1:
@@ -204,6 +247,61 @@ def _slug_from_item_url(item_url: str) -> str:
 def _slugify(value: str) -> str:
     cleaned = re.sub(r"[^a-z0-9]+", "-", str(value).strip().lower())
     return cleaned.strip("-")
+
+
+def _find_map_points(payload: object) -> list[dict[str, object]]:
+    if isinstance(payload, dict):
+        if "mapPoints" in payload and isinstance(payload["mapPoints"], list):
+            points = payload["mapPoints"]
+            return [point for point in points if isinstance(point, dict)]
+        for value in payload.values():
+            found = _find_map_points(value)
+            if found:
+                return found
+    elif isinstance(payload, list):
+        for value in payload:
+            found = _find_map_points(value)
+            if found:
+                return found
+    return []
+
+
+def _extract_point_slug(point: dict[str, object]) -> str:
+    venue = point.get("venue", {})
+    if isinstance(venue, dict):
+        slug = str(venue.get("slug", "") or "").strip()
+        if slug:
+            return slug
+    item_url = str(point.get("url", "") or "").strip()
+    return _slug_from_item_url(item_url)
+
+
+def _extract_point_description(point: dict[str, object]) -> str:
+    descriptions = point.get("description", [])
+    if isinstance(descriptions, list):
+        for candidate in descriptions:
+            if isinstance(candidate, dict):
+                plaintext = str(candidate.get("plaintext", "") or "").strip()
+                if plaintext:
+                    return plaintext
+                html = str(candidate.get("html", "") or "").strip()
+                if html:
+                    return unescape(re.sub(r"<[^>]+>", " ", html)).strip()
+    return ""
+
+
+def _extract_point_neighborhood(point: dict[str, object]) -> str:
+    venue = point.get("venue", {})
+    if isinstance(venue, dict):
+        return str(venue.get("neighborhood", "") or "").strip()
+    return ""
+
+
+def _extract_point_borough(point: dict[str, object]) -> str:
+    venue = point.get("venue", {})
+    if isinstance(venue, dict):
+        return str(venue.get("borough", "") or "").strip()
+    return ""
 
 
 def _safe_json_loads(value: str) -> object:

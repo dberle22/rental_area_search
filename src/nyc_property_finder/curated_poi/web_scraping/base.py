@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 import re
+from typing import Any
 
 
 DEFAULT_SEARCH_CONTEXT = "New York, NY"
@@ -27,6 +28,7 @@ class ScrapedArticleConfig:
     capture_mode: str = "parser"
     parser_name: str = ""
     status: str = "planned"
+    semi_manual_hints: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -92,12 +94,20 @@ def normalized_output_path(
     return Path(root_dir) / filename
 
 
-def build_search_query(title: str, raw_address: str = "", search_context: str = DEFAULT_SEARCH_CONTEXT) -> str:
+def build_search_query(
+    title: str,
+    raw_address: str = "",
+    raw_neighborhood: str = "",
+    search_context: str = DEFAULT_SEARCH_CONTEXT,
+) -> str:
     """Build a Places search query for one scraped source row."""
 
+    clean_address = " ".join(str(raw_address).split())
+    clean_neighborhood = " ".join(str(raw_neighborhood).split())
     parts = [
         " ".join(str(title).split()),
-        " ".join(str(raw_address).split()),
+        clean_address,
+        clean_neighborhood if not clean_address else "",
         " ".join(str(search_context).split()),
     ]
     return " ".join(part for part in parts if part).strip()
@@ -165,6 +175,7 @@ def normalize_article_rows(
                 search_query=build_search_query(
                     title=clean_name,
                     raw_address=clean_address,
+                    raw_neighborhood=" ".join(str(row.raw_neighborhood).split()).strip(),
                     search_context=search_context,
                 ),
             )

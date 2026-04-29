@@ -12,7 +12,11 @@ from nyc_property_finder.curated_poi.google_takeout.config import PLACE_DETAILS_
 
 
 TEXT_SEARCH_ID_FIELD_MASK = "places.id"
-PLACE_DETAILS_FIELD_MASK = "displayName,formattedAddress,location"
+PLACE_DETAILS_FIELD_MASK = (
+    "displayName,formattedAddress,location,rating,userRatingCount,"
+    "businessStatus,editorialSummary,priceLevel,websiteUri"
+)
+PLACE_DETAILS_CACHE_SCHEMA_VERSION = "2026-04-29-pro-v1"
 
 
 class GooglePlacesClientError(RuntimeError):
@@ -68,7 +72,7 @@ def get_place_details(
     api_key: str,
     timeout_seconds: int = 20,
 ) -> dict[str, Any]:
-    """Return minimal Place Details needed for mapping."""
+    """Return the canonical Place Details payload for curated POI enrichment."""
 
     request = build_place_details_request(google_place_id=google_place_id, api_key=api_key)
     try:
@@ -82,10 +86,10 @@ def get_place_details(
 
 
 def build_place_details_request(google_place_id: str, api_key: str) -> Request:
-    """Build the minimal Place Details request for app-ready POI coordinates."""
+    """Build the canonical Place Details request for curated POI enrichment."""
 
-    # Details are the paid enrichment step. Keep the field mask to only the
-    # display name, formatted address, and WGS84 location needed by dim_user_poi_v2.
+    # Details are the paid enrichment step. Keep one shared field mask so all
+    # curated-source pipelines populate the same cache payload shape.
     place_id = quote(google_place_id, safe="")
     url = PLACE_DETAILS_URL_TEMPLATE.format(place_id=place_id)
     headers = {

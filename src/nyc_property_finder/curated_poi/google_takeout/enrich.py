@@ -10,6 +10,7 @@ from typing import Any
 
 from nyc_property_finder.curated_poi.google_takeout.cache import (
     append_details_cache_row,
+    details_cache_row_is_current,
     read_details_cache,
     read_resolution_cache,
 )
@@ -53,7 +54,7 @@ def enrich_place_details(
     api_keys_path: str | Path = DEFAULT_API_KEYS_PATH,
     fetcher: DetailsFetcher = get_place_details,
 ) -> EnrichReport:
-    """Fetch missing minimal Place Details for cached Google place IDs."""
+    """Fetch missing or stale Place Details for cached Google place IDs."""
 
     api_key = api_key or get_google_maps_api_key(env_path=env_path, api_keys_path=api_keys_path)
     if not api_key:
@@ -62,7 +63,11 @@ def enrich_place_details(
     resolution_cache = read_resolution_cache(resolution_cache_path)
     place_ids = sorted(set(resolution_cache["google_place_id"].dropna()) - {""})
     details_cache = read_details_cache(details_cache_path)
-    missing_place_ids = [place_id for place_id in place_ids if place_id not in details_cache]
+    missing_place_ids = [
+        place_id
+        for place_id in place_ids
+        if place_id not in details_cache or not details_cache_row_is_current(details_cache[place_id])
+    ]
 
     if len(missing_place_ids) > max_details_calls:
         raise ValueError(

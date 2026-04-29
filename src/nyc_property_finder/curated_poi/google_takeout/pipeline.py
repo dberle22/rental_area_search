@@ -27,6 +27,7 @@ from nyc_property_finder.curated_poi.google_takeout.summary import (
     write_qa_csv,
     write_summary,
 )
+from nyc_property_finder.curated_poi.shared.places import build_canonical_dim_from_stages
 from nyc_property_finder.services.config import load_config
 from nyc_property_finder.services.duckdb_service import DuckDBService
 from nyc_property_finder.curated_poi.google_takeout.cache import read_resolution_cache
@@ -207,7 +208,7 @@ def _finalize_pipeline_report(
         details_cache_path=details_cache_path,
         source_record_ids=source_record_ids,
     )
-    dim_user_poi = _build_canonical_dim_from_stages([google_takeout_stage])
+    dim_user_poi = build_canonical_dim_from_stages([google_takeout_stage], canonical_columns=DIM_USER_POI_V2_COLUMNS)
 
     resolved_database_path = str(database_path) if database_path is not None else None
     if write_database:
@@ -268,13 +269,3 @@ def _source_record_ids_for_csv_paths(csv_paths: list[Path], search_context: str)
         parsed = parse_google_places_saved_list_csv(csv_path, search_context=search_context)
         source_record_ids.update(parsed["source_record_id"].astype(str).tolist())
     return source_record_ids
-
-
-def _build_canonical_dim_from_stages(stage_frames: list[pd.DataFrame]) -> pd.DataFrame:
-    non_empty = [frame.copy() for frame in stage_frames if not frame.empty]
-    if not non_empty:
-        return pd.DataFrame(columns=DIM_USER_POI_V2_COLUMNS)
-    if len(non_empty) == 1:
-        return non_empty[0]
-    combined = pd.concat(non_empty, ignore_index=True)
-    return combined.drop_duplicates(subset=["google_place_id"], keep="first").reset_index(drop=True)

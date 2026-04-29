@@ -8,6 +8,11 @@ from typing import Any
 
 import pandas as pd
 
+from nyc_property_finder.curated_poi.google_takeout.client import (
+    PLACE_DETAILS_CACHE_SCHEMA_VERSION,
+    PLACE_DETAILS_FIELD_MASK,
+)
+
 
 RESOLUTION_CACHE_COLUMNS = [
     "source_record_id",
@@ -100,6 +105,8 @@ def append_details_cache_row(
     payload: dict[str, Any],
     fetched_at: str,
     path: str | Path,
+    field_mask: str = PLACE_DETAILS_FIELD_MASK,
+    cache_schema_version: str = PLACE_DETAILS_CACHE_SCHEMA_VERSION,
 ) -> None:
     """Append one Place Details payload to the JSONL cache."""
 
@@ -108,9 +115,24 @@ def append_details_cache_row(
     row = {
         "google_place_id": google_place_id,
         "fetched_at": fetched_at,
+        "field_mask": field_mask,
+        "cache_schema_version": cache_schema_version,
         "payload": payload,
     }
     # JSONL appends make the enrichment step interruption-friendly. If a later
     # run refetches the same ID, read_details_cache keeps the latest row.
     with path.open("a", encoding="utf-8") as file:
         file.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
+
+
+def details_cache_row_is_current(row: dict[str, Any]) -> bool:
+    """Return True when a cached details row matches the active payload shape."""
+
+    if not isinstance(row, dict):
+        return False
+    if row.get("cache_schema_version") != PLACE_DETAILS_CACHE_SCHEMA_VERSION:
+        return False
+    if row.get("field_mask") != PLACE_DETAILS_FIELD_MASK:
+        return False
+    payload = row.get("payload")
+    return isinstance(payload, dict)
