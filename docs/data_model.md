@@ -36,12 +36,13 @@ script without bouncing across several files.
 
 | Product area | Source inventory entry | Local/default source path | Gold table(s) | Build entrypoint |
 | --- | --- | --- | --- | --- |
-| Database schema | DDL | `sql/ddl/001_gold_tables.sql` | All `property_explorer_gold` tables | `src/nyc_property_finder/pipelines/init_database.py` |
+| Database schema | DDL | `sql/ddl/001_gold_tables.sql`, `sql/ddl/002_public_poi_table.sql` | All `property_explorer_gold` tables | `src/nyc_property_finder/pipelines/init_database.py` |
 | Tract/NTA mapping | Tract-to-NTA equivalency | `data/raw/geography/tract_to_nta_equivalency.csv` | `dim_tract_to_nta` | `src/nyc_property_finder/pipelines/build_tract_to_nta.py` via `run_equivalency()` |
 | Tract geometry | Census tract boundaries | `data/raw/geography/census_tracts.geojson` | App geometry input; optional `geometry_wkt` QA | Read by `src/nyc_property_finder/app/base_map.py` and `build_property_context.py` |
 | Neighborhood geometry | NYC NTA boundaries | `data/raw/geography/nta_boundaries.geojson` | Fallback mapping source | `src/nyc_property_finder/pipelines/build_tract_to_nta.py` via centroid fallback `run()` |
 | Subway stops | MTA static GTFS or normalized stops CSV | `data/raw/transit/gtfs_subway.zip` or `data/raw/transit/subway_stops.csv` | `dim_subway_stop` | `src/nyc_property_finder/pipelines/ingest_subway_stops.py` |
-| User POIs | Google Maps saved places | `data/raw/google_maps/saved_places.kml`, `.json`, or saved-list `.csv` | `dim_user_poi` | `src/nyc_property_finder/pipelines/ingest_google_maps.py` |
+| Public POI baseline | NYC Open Data, MTA GTFS, OSM, GBFS, NYPL API | `data/raw/public_poi/` (dated snapshots per source) | `dim_public_poi` | `src/nyc_property_finder/pipelines/ingest_public_poi.py` |
+| Curated POIs | Google Maps Takeout CSVs, resolved via Google Places API | `data/raw/google_maps/poi_nyc/` | `dim_user_poi_v2` | `src/nyc_property_finder/pipelines/ingest_curated_poi_google_takeout.py` |
 | Listing geocodes | Address geocoding cache/quarantine | `data/interim/geocoding/listing_geocodes.csv` | Inputs to `dim_property_listing` | `src/nyc_property_finder/services/geosearch.py` through `ingest_property_file.py` |
 | Property listings | Manual listing CSV/JSON | `data/raw/listings_sample.csv`; future default `data/raw/property_listings.csv` | `dim_property_listing` | `src/nyc_property_finder/pipelines/ingest_property_file.py` |
 | Tract/NTA features | Metro Deep Dive tract features | configured in ignored `config/data_sources.yaml` | `fct_tract_features`, `fct_nta_features` | `src/nyc_property_finder/pipelines/build_neighborhood_features.py` via `run_metro_deep_dive()` |
@@ -58,9 +59,9 @@ The current Streamlit surface has two app layers:
 
 | App | Code | Required data | Current purpose |
 | --- | --- | --- | --- |
-| Neighborhood Explorer | `app/streamlit_app_v2.py`, `src/nyc_property_finder/app/base_map.py` | `dim_tract_to_nta`, `fct_tract_features`, `fct_nta_features`, and `data/raw/geography/census_tracts.geojson` | Reusable Brooklyn/Manhattan tract and neighborhood map with demographic metric selection. |
-| Neighborhood Data QA | `app/neighborhood_qa_app.py`, `src/nyc_property_finder/app/neighborhood_qa.py` | `dim_tract_to_nta`, `fct_tract_features`, `fct_nta_features`, configured source paths | QA surface for table readiness, metric coverage, and source-path status. |
-| Property Explorer | `app/streamlit_app.py`, `src/nyc_property_finder/app/explorer.py` | `fct_property_context`, `dim_user_poi`, `dim_subway_stop`, `fct_nta_features`, `fct_user_shortlist` | Listing map/list/detail workflow, score filters, POI/subway overlays, and local shortlist persistence. |
+| Neighborhood Explorer V2 (main focus) | `app/streamlit_app_v2.py`, `src/nyc_property_finder/app/base_map.py` | `dim_tract_to_nta`, `fct_tract_features`, `fct_nta_features`, `dim_user_poi_v2`, `dim_public_poi`, and `data/raw/geography/census_tracts.geojson` | Five-borough tract and neighborhood map with neighborhood-first defaults, curated/public POI overlays, and demographic metric review. |
+| Neighborhood Data QA | `app/neighborhood_qa_app.py`, `src/nyc_property_finder/app/neighborhood_qa.py` | `dim_tract_to_nta`, `fct_tract_features`, `fct_nta_features`, `dim_user_poi_v2`, `dim_public_poi`, curated staging tables, and configured source paths | QA surface for table readiness, demographic coverage, curated/public POI inventory coverage, and freshness/source-path status. |
+| Property Explorer V1 (on ice) | `app/streamlit_app.py`, `src/nyc_property_finder/app/explorer.py` | `fct_property_context`, `dim_user_poi_v2`, `dim_subway_stop`, `fct_nta_features`, `fct_user_shortlist` | Listing map/list/detail workflow, score filters, POI/subway overlays, and local shortlist persistence. Paused while V2 is the active development focus. |
 
 Neighborhood Explorer is intentionally foundation-first: it can render boundaries
 even when demographic metric values are null. Neighborhood Data QA owns metric
@@ -95,29 +96,31 @@ the following in the same workstream:
 | `dim_property_listing` | This doc, listing contract | `sql/ddl/001_gold_tables.sql` | `ingest_property_file.py`, listing transforms, geocoding service | Required fields populated after geocoding; positive prices; valid listing types; NYC coordinate bounds; duplicate `property_id` collapsed. | `tests/test_property_file_ingestion.py`, `tests/test_geosearch.py`, `tests/test_schema.py` |
 | `dim_tract_to_nta` | This doc, geography source notes | `sql/ddl/001_gold_tables.sql` | `build_tract_to_nta.py`, geography transforms | One row per tract; NTA ID/name present; Manhattan/Brooklyn coverage; unmapped tracts are zero or explained. | `tests/test_tract_to_nta.py`, `tests/test_geo.py`, `tests/test_schema.py` |
 | `dim_subway_stop` | This doc, transit source notes | `sql/ddl/001_gold_tables.sql` | `ingest_subway_stops.py`, transit transforms | Stop IDs unique; stop name present; coordinates in NYC bounds; GTFS route lines preserved enough for display/counts. | `tests/test_subway_ingestion.py`, `tests/test_schema.py` |
-| `dim_user_poi` | This doc, POI source notes | `sql/ddl/001_gold_tables.sql` | `ingest_google_maps.py`, POI transforms, geocoding service | POI IDs stable; names present; categories normalized with `other` fallback; private exports stay local; geocode misses quarantined. | `tests/test_poi_parsing.py`, `tests/test_geosearch.py`, `tests/test_schema.py` |
+| `dim_public_poi` | This doc, `docs/poi_categories.md` | `sql/ddl/002_public_poi_table.sql` | `ingest_public_poi.py`, public_poi source modules | 27 categories present; all rows have coordinates in NYC bounds; `poi_id` unique; `snapshotted_at` populated. | `tests/test_public_poi_pipeline.py`, `tests/test_schema.py` |
+| `dim_user_poi_v2` | This doc, `docs/poi_categories.md` | `sql/ddl/001_gold_tables.sql` | `ingest_curated_poi_google_takeout.py`, `curated_poi/google_takeout` package | POI IDs stable; names present; category/subcategory taxonomy preserved; all rows have Google Place ID and coordinates; private exports stay local. | `tests/test_poi_parsing.py`, `tests/test_schema.py` |
 | `fct_tract_features` | This doc, Metro Deep Dive source notes | `sql/ddl/001_gold_tables.sql` | `build_neighborhood_features.py`, `sql/gold/fct_tract_features.sql` | Tract IDs join to mapping; percent scale documented; null metrics are explicit and do not produce precise-looking scores. | `tests/test_neighborhood_features.py`, `tests/test_base_map_app.py`, `tests/test_schema.py` |
-| `fct_nta_features` | This doc, Metro Deep Dive source notes | `sql/ddl/001_gold_tables.sql` | `build_neighborhood_features.py`, `sql/gold/fct_nta_features.sql` | One row per NTA; aggregation method documented; names present; null metric coverage visible in Neighborhood Data QA. | `tests/test_neighborhood_features.py`, `tests/test_base_map_app.py`, `tests/test_schema.py` |
+| `fct_nta_features` | This doc, Metro Deep Dive source notes | `sql/ddl/001_gold_tables.sql` | `build_neighborhood_features.py`, `sql/gold/fct_nta_features.sql` | One row per NTA; `borough` and `tract_count` populated; aggregation method documented; names present; null metric coverage visible in Neighborhood Data QA. | `tests/test_neighborhood_features.py`, `tests/test_base_map_app.py`, `tests/test_schema.py` |
 | `fct_property_context` | This doc, scoring config | `sql/ddl/001_gold_tables.sql` | `build_property_context.py`, scoring transforms | Context row count matches listings; tract/NTA joins valid; subway distance non-negative; POI JSON valid; scores are null for documented reasons or `0-100`. | `tests/test_property_context_pipeline.py`, `tests/test_property_explorer_app.py`, `tests/test_schema.py` |
 | `fct_user_shortlist` | This doc, app helper contract | `sql/ddl/001_gold_tables.sql` | `src/nyc_property_finder/app/explorer.py`, Streamlit actions | One current row per `user_id`/`property_id`; controlled status values; rebuilds do not replace user-authored rows. | `tests/test_property_explorer_app.py`, `tests/test_schema.py` |
-| Neighborhood Explorer app artifact | `docs/app/neighborhood_explorer_app.md`, this doc | N/A | `app/streamlit_app_v2.py`, `src/nyc_property_finder/app/base_map.py` | Boundaries render with or without metric values; Brooklyn/Manhattan filtering works. | `tests/test_base_map_app.py` |
-| Neighborhood Data QA app artifact | `docs/app/neighborhood_explorer_app.md`, this doc | N/A | `app/neighborhood_qa_app.py`, `src/nyc_property_finder/app/neighborhood_qa.py` | Table readiness, metric coverage, and configured source-path status are visible outside the explorer. | `tests/test_neighborhood_qa.py` |
+| Neighborhood Explorer app artifact | `docs/app/neighborhood_explorer_app.md`, this doc | N/A | `app/streamlit_app_v2.py`, `src/nyc_property_finder/app/base_map.py` | Five-borough boundaries render with or without metric values; default neighborhood-first UX, POI layer toggles, and tooltip counts work. | `tests/test_base_map_app.py` |
+| Neighborhood Data QA app artifact | `docs/app/neighborhood_explorer_app.md`, this doc | N/A | `app/neighborhood_qa_app.py`, `src/nyc_property_finder/app/neighborhood_qa.py` | Table readiness, metric coverage, curated/public POI inventory coverage, and freshness/source-path status are visible outside the explorer. | `tests/test_neighborhood_qa.py` |
 
 ## MVP Table Status
 
 | Table | MVP Status | Notes |
 | --- | --- | --- |
-| `property_explorer_gold.dim_property_listing` | Required | Manual CSV/JSON is the first source path. |
+| `property_explorer_gold.dim_property_listing` | Required | Manual CSV/JSON is the current source path. |
 | `property_explorer_gold.dim_tract_to_nta` | Required | NTA is the UI neighborhood language; tracts support ACS features. |
-| `property_explorer_gold.dim_subway_stop` | Required | Supports map layer, nearest stop, and mobility score. |
-| `property_explorer_gold.dim_user_poi` | Required | Google Maps saved places are core to personalization. |
-| `property_explorer_gold.fct_tract_features` | Required | Metro Deep Dive-derived tract metrics first. Crime is deferred. |
-| `property_explorer_gold.fct_nta_features` | Required | Materialized NTA summaries for panels and filters. |
+| `property_explorer_gold.dim_subway_stop` | Active (legacy) | Supports nearest stop and mobility score. Subway stations also in `dim_public_poi`; these two tables serve different purposes. |
+| `property_explorer_gold.dim_public_poi` | Active — complete | 56,540 rows across 27 categories as of 2026-04-23. See `docs/poi_categories.md`. |
+| `property_explorer_gold.dim_user_poi_v2` | Active | Curated POIs normalized through the new category/subcategory/descriptor model. Legacy rows exist for bookstores, record stores, and museums; the full `poi_nyc/` directory is ready for WS2 batch loading. |
+| `property_explorer_gold.fct_tract_features` | Required | Metro Deep Dive-derived tract metrics. Crime is deferred. |
+| `property_explorer_gold.fct_nta_features` | Required | Materialized NTA summaries for panels, filters, and neighborhood-first map/tooltips. |
 | `property_explorer_gold.fct_property_context` | Required | App-ready enriched listing rows and score components. |
-| `property_explorer_gold.fct_user_shortlist` | Required | Persisted local saves and notes. Present in DDL; app helpers own user-authored rows. |
-| Listing snapshot/history table | Deferred | `active` on listings is enough for MVP unless review changes this. |
+| `property_explorer_gold.fct_user_shortlist` | Required | Persisted local saves and notes. App helpers own user-authored rows. |
+| Listing snapshot/history table | Deferred | `active` on listings is enough for now. |
 | Amenity bridge table | Deferred | Keep `amenities` as optional JSON/text for first pass. |
-| Listing images/media table | Post-MVP | MVP links to the source listing URL instead of storing image URLs. |
+| Listing images/media table | Deferred | Source URL is enough for now. |
 
 ## `property_explorer_gold.dim_property_listing`
 
@@ -224,7 +227,8 @@ largest-intersection can replace it if QA finds boundary misses.
 QA checks:
 
 - Every loaded tract has one and only one NTA assignment.
-- Manhattan and Brooklyn tracts are covered for the MVP sample.
+- All five-borough tracts represented by the current tract geometry are
+  covered or explicitly explained.
 - Unmapped tract count is zero or explained.
 - NTA IDs/names are not blank.
 
@@ -261,38 +265,91 @@ Validation:
 Downstream app uses: transit map layer, nearest subway display, subway distance,
 mobility score, listing card badge.
 
-## `property_explorer_gold.dim_user_poi`
+## `property_explorer_gold.dim_user_poi_v2`
 
-Grain: one saved user place.
+Grain: one canonical curated place per physical location, currently keyed by
+resolved Google Place ID.
 
 Primary key: `poi_id`.
 
-Refresh behavior: replace from the current local Google Maps export for MVP.
+Refresh behavior: replace on each full canonical merge run. User-reviewed
+resolution cache at `data/interim/google_places/` persists across runs so API
+calls are not repeated. WS2.5 introduces a staged-ingest direction where
+Google Takeout, web scraping, and manual upload land in source-specific staging
+tables first, then merge into this canonical table.
 
-Source: Google Maps saved places KML/JSON export under
-`data/raw/google_maps/saved_places.kml` or
-`data/raw/google_maps/saved_places.json`. First expected lists are custom
-Bookstores, Museums, and Restaurants lists.
+Source: curated source rows from one or more ingestion methods. The current
+live path is Google Takeout CSV exports under `data/raw/google_maps/poi_nyc/`,
+one file per source list or sub-list (for example `poi_bakeries_nyc.csv`).
+WS2.5 sets the target pattern to:
+
+- `stg_user_poi_google_takeout`
+- `stg_user_poi_web_scrape`
+- `stg_user_poi_manual_upload`
+
+Those staging tables should preserve source-specific metadata, then feed a
+final canonical merge into `dim_user_poi_v2`. The active Google Takeout
+implementation lives in `src/nyc_property_finder/curated_poi/google_takeout/`
+and resolves places to Google Place IDs via Google Places API. See
+`docs/poi_categories.md` for the current category list and taxonomy rules.
 
 Required columns:
 
 | Column | Type | Nulls | Notes |
 | --- | --- | --- | --- |
 | `poi_id` | string | no | Stable hash from name and rounded coordinates. |
+| `source_systems` | string | no | JSON text array of contributing ingestion methods, for example `["google_maps_takeout"]`. |
+| `primary_source_system` | string | no | Canonical source/method label preferred for downstream readers. |
+| `source_list_names` | string | no | JSON text array of contributing source lists. |
+| `category` | string | no | Canonical top-level category for the place. Additive WS2.5 field; downstream readers should migrate here from `primary_category`. |
+| `subcategory` | string | no | Canonical filter bucket for the place. Blank source values should fall back to `category`. Additive WS2.5 field. |
+| `detail_level_3` | string | yes | Canonical primary descriptor token when one exists. Additive WS2.5 field. |
+| `categories` | string | no | JSON text array of category values across contributing source rows. |
+| `primary_category` | string | no | Primary category used by current app filters. |
+| `subcategories` | string | no | JSON text array of curated subcategory values. |
+| `primary_subcategory` | string | yes | Primary curated subcategory for one place. |
+| `detail_level_3_values` | string | yes | JSON text array of flexible descriptor tags derived from curated source metadata. |
+| `primary_detail_level_3` | string | yes | First descriptor tag when available. |
+| `input_title` | string | no | Original title from the source row used for resolution. |
+| `note` | string | yes | JSON text array of source note values. |
+| `tags` | string | yes | JSON text array of raw source tags. |
+| `comment` | string | yes | JSON text array of raw source comments. |
+| `source_url` | string | yes | JSON text array of source URLs. |
+| `google_place_id` | string | no | Canonical Google Places identifier used for deduplication. |
+| `match_status` | string | yes | Match outcome from the resolve step. |
+| `address` | string | yes | Google-standardized formatted address. |
 | `name` | string | no | Place name. |
-| `category` | string | no | Normalized category from `config/poi_categories.yaml`; fallback `other`. |
-| `source_list_name` | string | no | Google saved list name or export grouping. |
 | `lat` | double | no | WGS84 latitude. |
 | `lon` | double | no | WGS84 longitude. |
+| `has_place_details` | boolean | no | True when the canonical row has fetched Google Place Details / geo enrichment available. |
+| `details_fetched_at` | timestamp | yes | Timestamp for the cached Place Details payload used to build the row. |
 
-Category rule: use keyword rules from `config/poi_categories.yaml` for MVP.
-Manual category overrides are post-MVP.
+Taxonomy rule: curated source rows normalize through
+`config/poi_categories.yaml` into `category`, `subcategory`, and optional
+flexible level-3 descriptors. Restaurant-family files roll up under
+`category="restaurants"` and use subcategory/detail rules from the taxonomy
+config.
+
+Normalization rule: level 2 (`subcategory`) should be the one stable,
+filterable bucket for the row. Level 3 is a flexible descriptor layer that can
+hold one or many tags and can be recalculated later without changing the top
+level taxonomy. Blank top-level category values fall back to `other`. Blank
+subcategory values fall back to the resolved category. Example: a row can be
+`category="restaurants"`, `subcategory="sandwiches"`, and level-3 descriptors
+`["deli", "italian"]`.
 
 Validation:
 
 - Coordinates must be present and within the NYC bounding box for MVP scoring.
 - Blank names should be rejected or labeled during QA.
 - Unknown categories map to `other`.
+- Blank subcategories map to the resolved category.
+- Canonical place rows should represent one physical location; repeated source
+  mentions belong in source-membership fields or staging tables, not duplicate
+  rows in this table.
+- True legacy/new overlaps should merge into one canonical place row, with
+  source lineage preserved and suspicious overlaps retained in QA outputs for
+  manual review.
 - Sensitive raw exports stay local and out of git.
 
 Downstream app uses: POI map layer, nearby POI counts, category filters, listing
@@ -356,6 +413,8 @@ Required columns:
 | --- | --- | --- | --- |
 | `nta_id` | string | no | NYC NTA code. |
 | `nta_name` | string | no | Display label. |
+| `borough` | string | yes | Collapsed borough label for the NTA. Cross-borough NTAs join labels such as `Bronx / Manhattan`. |
+| `tract_count` | integer | no | Count of mapped tracts contributing to the NTA row. |
 | `median_income` | double | yes | Median or weighted/tract aggregate; method must be documented before production use. |
 | `median_rent` | double | yes | NTA-level summary. |
 | `median_home_value` | double | yes | NTA-level summary. |
@@ -370,11 +429,14 @@ Deferred column:
 
 Validation:
 
-- Manhattan and Brooklyn sample NTAs have rows where source coverage allows.
+- All five-borough NTAs represented by the current crosswalk have rows where
+  source coverage allows.
 - NTA IDs are unique.
+- `tract_count` is positive.
 - Aggregation method is visible in pipeline docs/tests.
 
-Downstream app uses: neighborhood panel, NTA filters, neighborhood score inputs.
+Downstream app uses: neighborhood panel, NTA filters, neighborhood tooltip
+context, neighborhood score inputs.
 
 ## `property_explorer_gold.fct_property_context`
 
@@ -420,9 +482,9 @@ Required Sprint 3 input columns:
 | `property_explorer_gold.dim_property_listing` | `property_id`, `source`, `source_listing_id`, `address`, `lat`, `lon`, `price`, `beds`, `baths`, `listing_type`, `active`, `url`, `ingest_timestamp` |
 | `property_explorer_gold.dim_tract_to_nta` | `tract_id`, `nta_id`, `nta_name`, `borough`, `cdta_id`, `cdta_name` |
 | `property_explorer_gold.dim_subway_stop` | `subway_stop_id`, `stop_name`, `lines`, `lat`, `lon` |
-| `property_explorer_gold.dim_user_poi` | `poi_id`, `name`, `category`, `source_list_name`, `lat`, `lon` |
+| `property_explorer_gold.dim_user_poi_v2` | `poi_id`, `name`, `category`, `source_list_name`, `lat`, `lon` |
 | `property_explorer_gold.fct_tract_features` | `tract_id`, `median_income`, `median_rent`, `median_home_value`, `pct_bachelors_plus`, `median_age` |
-| `property_explorer_gold.fct_nta_features` | `nta_id`, `nta_name`, `median_income`, `median_rent`, `median_home_value`, `pct_bachelors_plus`, `median_age` |
+| `property_explorer_gold.fct_nta_features` | `nta_id`, `nta_name`, `borough`, `tract_count`, `median_income`, `median_rent`, `median_home_value`, `pct_bachelors_plus`, `median_age` |
 
 Scoring proposal:
 
@@ -513,10 +575,11 @@ Downstream app uses: shortlist panel, comparison view, notes, local persistence.
 - `days_on_market` is deferred until scraper/adapter data exists.
 - Missing listing coordinates can be filled by a geocoding step before scoring.
 - Approximate coordinates are acceptable when clearly marked.
-- Manhattan and Brooklyn are the first real geography coverage target.
+- All five boroughs are the current real geography coverage target.
 - NTA is the primary neighborhood UI language.
-- Google Maps saved places are a core MVP input. First expected lists are custom
-  Bookstores, Museums, and Restaurants lists.
+- Google Maps saved places are a core input, resolved via Google Places API.
+  Active curated categories: bookstores, record_stores, museums (loaded);
+  15 additional `poi_nyc/` CSVs pending ingestion. See `docs/poi_categories.md`.
 - Keyword-based POI categorization is enough for MVP.
 - Straight-line distance is the MVP proximity method.
 - Tract-to-NTA mapping should prefer an official/source equivalency table before
@@ -536,6 +599,5 @@ Downstream app uses: shortlist panel, comparison view, notes, local persistence.
 
 ## Open Questions For Review
 
-1. Which exact Google Maps custom lists will be exported for the first demo?
-2. What exact Metro Deep Dive source tables/views should the Sprint 2 tract
-   feature SQL query use?
+1. ~~Which exact Google Maps custom lists will be exported for the first demo?~~ Resolved: 15 curated lists in `data/raw/google_maps/poi_nyc/`; see `docs/poi_categories.md`.
+2. What exact Metro Deep Dive source tables/views should the tract feature SQL query use?

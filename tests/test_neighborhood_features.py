@@ -19,8 +19,8 @@ def test_build_nta_features_aggregates_tract_features() -> None:
 
     mapping = pd.DataFrame(
         [
-            {"tract_id": "t1", "nta_id": "n1", "nta_name": "Test NTA"},
-            {"tract_id": "t2", "nta_id": "n1", "nta_name": "Test NTA"},
+            {"tract_id": "t1", "nta_id": "n1", "nta_name": "Test NTA", "borough": "Brooklyn"},
+            {"tract_id": "t2", "nta_id": "n1", "nta_name": "Test NTA", "borough": "Brooklyn"},
         ]
     )
 
@@ -28,7 +28,33 @@ def test_build_nta_features_aggregates_tract_features() -> None:
 
     assert len(nta_features) == 1
     assert nta_features.iloc[0]["nta_id"] == "n1"
+    assert nta_features.iloc[0]["borough"] == "Brooklyn"
+    assert nta_features.iloc[0]["tract_count"] == 2
     assert nta_features.iloc[0]["median_income"] == 150
+
+
+def test_build_nta_features_collapses_cross_borough_ntas_to_one_row() -> None:
+    tract_features = pd.DataFrame(
+        [
+            {"tract_id": "t1", "median_income": 100, "median_rent": 10, "median_home_value": 1000},
+            {"tract_id": "t2", "median_income": 200, "median_rent": 20, "median_home_value": 2000},
+        ]
+    )
+    for column in ["pct_bachelors_plus", "median_age", "crime_rate_proxy"]:
+        tract_features[column] = pd.NA
+
+    mapping = pd.DataFrame(
+        [
+            {"tract_id": "t1", "nta_id": "n1", "nta_name": "Cross NTA", "borough": "Bronx"},
+            {"tract_id": "t2", "nta_id": "n1", "nta_name": "Cross NTA", "borough": "Manhattan"},
+        ]
+    )
+
+    nta_features = build_nta_features(tract_features, mapping)
+
+    assert len(nta_features) == 1
+    assert nta_features.iloc[0]["borough"] == "Bronx / Manhattan"
+    assert nta_features.iloc[0]["tract_count"] == 2
 
 
 def test_empty_tract_features_from_mapping_keeps_target_counties() -> None:

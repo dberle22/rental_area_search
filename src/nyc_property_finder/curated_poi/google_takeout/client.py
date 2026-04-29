@@ -8,7 +8,7 @@ from urllib.parse import quote
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from nyc_property_finder.google_places_poi.config import PLACE_DETAILS_URL_TEMPLATE, TEXT_SEARCH_URL
+from nyc_property_finder.curated_poi.google_takeout.config import PLACE_DETAILS_URL_TEMPLATE, TEXT_SEARCH_URL
 
 
 TEXT_SEARCH_ID_FIELD_MASK = "places.id"

@@ -15,6 +15,8 @@ RESOLUTION_CACHE_COLUMNS = [
     "source_file",
     "source_list_name",
     "category",
+    "subcategory",
+    "detail_level_3",
     "input_title",
     "note",
     "tags",

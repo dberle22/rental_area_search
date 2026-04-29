@@ -13,15 +13,28 @@ import pandas as pd
 
 
 DEFAULT_CATEGORY_KEYWORDS = {
-    "restaurants": ["restaurant", "diner", "pizza", "food"],
+    # Food & Drink — specific first to avoid false matches on broad terms
+    "pizza": ["pizza"],
+    "bakeries": ["bakery", "pastry", "patisserie"],
+    "sandwiches": ["sandwich"],
+    "coffee_shops": ["coffee", "cafe", "espresso"],
+    "rest_chinese": ["chinese", "dim sum", "cantonese"],
+    "rest_japanese": ["japanese", "sushi", "ramen", "izakaya"],
+    "specialty_grocery": ["speciality", "specialty", "gourmet"],
+    # food_markets before groceries — both can match "market"
+    "food_markets": ["market", "food hall"],
+    "restaurants": ["restaurant", "diner", "food"],
     "bars": ["bar", "brewery", "pub", "cocktail"],
-    "parks": ["park", "garden", "playground"],
+    # Culture & Entertainment
     "bookstores": ["bookstore", "books"],
     "record_stores": ["record", "vinyl"],
-    "coffee_shops": ["coffee", "cafe", "espresso"],
-    "groceries": ["grocery", "market", "supermarket"],
     "museums": ["museum", "gallery"],
+    "movie_theaters": ["cinema", "movie", "theater"],
+    "music_venues": ["venue", "concert", "music", "jazz"],
+    # Everyday & Outdoor
+    "groceries": ["grocery", "supermarket"],
     "shopping": ["shop", "store", "mall"],
+    "parks": ["park", "garden", "playground"],
 }
 
 

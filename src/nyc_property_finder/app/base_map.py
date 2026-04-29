@@ -10,15 +10,17 @@ from typing import Any
 import geopandas as gpd
 import pandas as pd
 import pydeck as pdk
-from shapely.geometry import MultiPolygon, Polygon
+from shapely.geometry import MultiPolygon, Point, Polygon
 
 from nyc_property_finder.app.explorer import load_optional_table, table_exists
-from nyc_property_finder.google_places_poi.build_dim import build_dim_user_poi_v2
-from nyc_property_finder.google_places_poi.cache import read_details_cache
-from nyc_property_finder.google_places_poi.config import (
+from nyc_property_finder.curated_poi.google_takeout.build_dim import build_dim_user_poi_v2
+from nyc_property_finder.curated_poi.google_takeout.cache import read_details_cache
+from nyc_property_finder.curated_poi.google_takeout.config import (
     DEFAULT_DETAILS_CACHE_PATH,
     DEFAULT_RESOLUTION_CACHE_PATH,
 )
+from nyc_property_finder.public_poi.config import CATEGORY_SLUGS
+from nyc_property_finder.services.duckdb_service import DuckDBService
 
 
 GOLD_SCHEMA = "property_explorer_gold"
@@ -27,9 +29,17 @@ NTA_FEATURE_TABLE = f"{GOLD_SCHEMA}.fct_nta_features"
 TRACT_TO_NTA_TABLE = f"{GOLD_SCHEMA}.dim_tract_to_nta"
 POI_TABLE = f"{GOLD_SCHEMA}.dim_user_poi"
 POI_V2_TABLE = f"{GOLD_SCHEMA}.dim_user_poi_v2"
+PUBLIC_POI_TABLE = f"{GOLD_SCHEMA}.dim_public_poi"
 
-TARGET_COUNTY_GEOIDS = ("36047", "36061")
-TARGET_BOROUGHS = ("Brooklyn", "Manhattan")
+BOROUGH_TO_COUNTY_GEOID = {
+    "Bronx": "36005",
+    "Brooklyn": "36047",
+    "Manhattan": "36061",
+    "Queens": "36081",
+    "Staten Island": "36085",
+}
+TARGET_BOROUGHS = tuple(BOROUGH_TO_COUNTY_GEOID)
+TARGET_COUNTY_GEOIDS = tuple(BOROUGH_TO_COUNTY_GEOID.values())
 
 DEMOGRAPHIC_METRICS: dict[str, dict[str, str]] = {
     "median_income": {"label": "Median household income", "format": "currency"},
@@ -38,6 +48,17 @@ DEMOGRAPHIC_METRICS: dict[str, dict[str, str]] = {
     "pct_bachelors_plus": {"label": "Bachelor's plus", "format": "percent"},
     "median_age": {"label": "Median age", "format": "number"},
 }
+
+CORE_PUBLIC_TOOLTIP_CATEGORIES = (
+    "grocery_store",
+    "citi_bike_station",
+    "subway_station",
+    "bank",
+    "gym",
+    "pharmacy",
+)
+
+DEFAULT_PUBLIC_POI_SELECTION = ("subway_station",)
 
 BASE_COLUMNS = [
     "tract_id",
@@ -76,6 +97,66 @@ EMPTY_MAP_STATS = {
     "metric_non_null_count": 0,
     "metric_coverage": 0.0,
 }
+
+PUBLIC_POI_COLUMNS = [
+    "poi_id",
+    "source_system",
+    "source_id",
+    "category",
+    "subcategory",
+    "name",
+    "address",
+    "lat",
+    "lon",
+    "attributes",
+    "snapshotted_at",
+]
+
+PUBLIC_POI_CATEGORY_ALIASES = {
+    "museum_institution": "museum_institutional",
+}
+
+DEFAULT_PUBLIC_POI_CATEGORIES = (
+    "atm",
+    "bank",
+    "citi_bike_station",
+    "dog_run",
+    "farmers_market",
+    "ferry_terminal",
+    "grocery_store",
+    "gym",
+    "hospital",
+    "landmark",
+    "museum_institutional",
+    "park",
+    "path_station",
+    "pharmacy",
+    "post_office",
+    "public_art",
+    "public_library",
+    "subway_station",
+    "urgent_care",
+)
+
+PUBLIC_POI_COLOR_PALETTE = [
+    [50, 112, 194, 190],
+    [54, 146, 97, 190],
+    [210, 131, 36, 190],
+    [177, 83, 77, 190],
+    [108, 90, 179, 190],
+    [35, 140, 149, 190],
+    [144, 112, 58, 190],
+    [190, 96, 141, 190],
+]
+
+
+@dataclass(frozen=True)
+class BaseGeographyData:
+    """Prepared tract and neighborhood geography before metric-specific formatting."""
+
+    tracts: gpd.GeoDataFrame
+    neighborhoods: gpd.GeoDataFrame
+    stats: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -164,6 +245,53 @@ def format_poi_category(value: Any) -> str:
     return text.replace("_", " ").title() if text else "Other"
 
 
+def canonical_public_poi_category(value: str) -> str:
+    """Map UI-friendly public category aliases to stored category slugs."""
+
+    text = str(value).strip()
+    if not text:
+        return ""
+    return PUBLIC_POI_CATEGORY_ALIASES.get(text, text)
+
+
+def _sql_quote(value: str) -> str:
+    """Return a safely single-quoted SQL string literal."""
+
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def available_public_poi_categories(poi: pd.DataFrame) -> list[str]:
+    """Return sorted public category slugs present in the point dataframe."""
+
+    if poi.empty or "category" not in poi.columns:
+        return []
+    categories = {
+        canonical_public_poi_category(category)
+        for category in poi["category"].fillna("").astype(str)
+        if str(category).strip()
+    }
+    return sorted(categories)
+
+
+def format_public_poi_source(value: Any) -> str:
+    """Return a readable public-POI source label."""
+
+    text = str(value).strip()
+    if not text:
+        return "Unknown source"
+    if text == "nyc_open_data":
+        return "NYC Open Data"
+    if text == "nypl_api":
+        return "NYPL API"
+    if text == "mta_gtfs":
+        return "MTA GTFS"
+    if text == "gbfs":
+        return "GBFS"
+    if text == "osm":
+        return "OpenStreetMap"
+    return text.replace("_", " ").title()
+
+
 def normalize_metric_series(values: pd.Series) -> pd.Series:
     """Normalize a numeric series to 0-1 for color ramps."""
 
@@ -237,25 +365,117 @@ def add_demographic_summary_columns(dataframe: gpd.GeoDataFrame) -> gpd.GeoDataF
     return output
 
 
+def _count_points_by_geography(
+    geography: gpd.GeoDataFrame,
+    geography_id_col: str,
+    points: pd.DataFrame,
+    count_column_prefix: str,
+    category_col: str | None = None,
+    categories: tuple[str, ...] = (),
+) -> gpd.GeoDataFrame:
+    """Attach total and optional per-category point counts to a geography layer."""
+
+    output = geography.copy()
+    total_column = f"{count_column_prefix}_count_total"
+    output[total_column] = 0
+    for category in categories:
+        output[f"{count_column_prefix}_count_{category}"] = 0
+
+    if output.empty or points.empty or geography_id_col not in output.columns:
+        return output
+
+    point_frame = points.copy()
+    point_frame["lat"] = pd.to_numeric(point_frame["lat"], errors="coerce")
+    point_frame["lon"] = pd.to_numeric(point_frame["lon"], errors="coerce")
+    point_frame = point_frame.dropna(subset=["lat", "lon"]).copy()
+    if point_frame.empty:
+        return output
+
+    point_geo = gpd.GeoDataFrame(
+        point_frame,
+        geometry=gpd.points_from_xy(point_frame["lon"], point_frame["lat"]),
+        crs="EPSG:4326",
+    )
+    joined = gpd.sjoin(
+        point_geo,
+        output[[geography_id_col, "geometry"]],
+        how="inner",
+        predicate="within",
+    )
+    if joined.empty:
+        return output
+
+    total_counts = joined.groupby(geography_id_col).size().rename(total_column)
+    output = output.merge(total_counts, on=geography_id_col, how="left", suffixes=("", "_joined"))
+    if f"{total_column}_joined" in output.columns:
+        output[total_column] = output[f"{total_column}_joined"].fillna(output[total_column]).fillna(0).astype(int)
+        output = output.drop(columns=[f"{total_column}_joined"])
+    else:
+        output[total_column] = output[total_column].fillna(0).astype(int)
+
+    if category_col and categories and category_col in joined.columns:
+        joined[category_col] = joined[category_col].fillna("").astype(str)
+        for category in categories:
+            column = f"{count_column_prefix}_count_{category}"
+            category_counts = (
+                joined.loc[joined[category_col] == category]
+                .groupby(geography_id_col)
+                .size()
+                .rename(column)
+            )
+            output = output.merge(category_counts, on=geography_id_col, how="left", suffixes=("", "_joined"))
+            if f"{column}_joined" in output.columns:
+                output[column] = output[f"{column}_joined"].fillna(output[column]).fillna(0).astype(int)
+                output = output.drop(columns=[f"{column}_joined"])
+            else:
+                output[column] = output[column].fillna(0).astype(int)
+
+    return output
+
+
+def add_poi_summary_columns(
+    dataframe: gpd.GeoDataFrame,
+    geography_id_col: str,
+    curated_points: pd.DataFrame,
+    public_points: pd.DataFrame,
+) -> gpd.GeoDataFrame:
+    """Attach curated/public POI totals and core public-category counts."""
+
+    output = _count_points_by_geography(
+        dataframe,
+        geography_id_col=geography_id_col,
+        points=curated_points,
+        count_column_prefix="curated_poi",
+    )
+    output = _count_points_by_geography(
+        output,
+        geography_id_col=geography_id_col,
+        points=public_points,
+        count_column_prefix="public_poi",
+        category_col="category",
+        categories=CORE_PUBLIC_TOOLTIP_CATEGORIES,
+    )
+    output["total_poi_count"] = (
+        output["curated_poi_count_total"].fillna(0).astype(int)
+        + output["public_poi_count_total"].fillna(0).astype(int)
+    )
+    return output
+
+
 def add_tooltip_columns(dataframe: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     """Add pre-rendered tooltip text for flat PyDeck polygon records."""
 
     output = dataframe.copy()
-    output["selected_metric_tooltip"] = (
-        "<b>"
-        + output["nta_name"].fillna("Unavailable").astype(str)
-        + "</b><br/>Tract: "
-        + output["tract_id"].fillna("Unavailable").astype(str)
-        + "<br/>"
+    def _count_series(column: str) -> pd.Series:
+        if column not in output.columns:
+            return pd.Series(0, index=output.index, dtype="int64")
+        return pd.to_numeric(output[column], errors="coerce").fillna(0).astype(int)
+
+    shared_metric_details = (
+        "<br/>"
         + output["selected_metric_label"].fillna("Metric").astype(str)
         + ": "
         + output["selected_metric_display"].fillna("Unavailable").astype(str)
-    )
-    output["nta_summary_tooltip"] = (
-        "<b>"
-        + output["nta_name"].fillna("Unavailable").astype(str)
-        + "</b><br/>"
-        + output["borough"].fillna("Unavailable").astype(str)
         + "<br/>Median household income: "
         + output["median_income_display"].fillna("Unavailable").astype(str)
         + "<br/>Median gross rent: "
@@ -266,7 +486,43 @@ def add_tooltip_columns(dataframe: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         + output["pct_bachelors_plus_display"].fillna("Unavailable").astype(str)
         + "<br/>Median age: "
         + output["median_age_display"].fillna("Unavailable").astype(str)
+        + "<br/>Curated POIs: "
+        + _count_series("curated_poi_count_total").astype(str)
+        + "<br/>Public POIs: "
+        + _count_series("public_poi_count_total").astype(str)
+        + "<br/>Total POIs: "
+        + _count_series("total_poi_count").astype(str)
+        + "<br/>Subway stations: "
+        + _count_series("public_poi_count_subway_station").astype(str)
+        + "<br/>Citi Bike stations: "
+        + _count_series("public_poi_count_citi_bike_station").astype(str)
+        + "<br/>Grocery stores: "
+        + _count_series("public_poi_count_grocery_store").astype(str)
+        + "<br/>Banks: "
+        + _count_series("public_poi_count_bank").astype(str)
+        + "<br/>Gyms: "
+        + _count_series("public_poi_count_gym").astype(str)
+        + "<br/>Pharmacies: "
+        + _count_series("public_poi_count_pharmacy").astype(str)
     )
+
+    output["selected_metric_tooltip"] = (
+        "<b>"
+        + output["nta_name"].fillna("Unavailable").astype(str)
+        + "</b><br/>Borough: "
+        + output["borough"].fillna("Unavailable").astype(str)
+        + "<br/>Tract: "
+        + output["tract_id"].fillna("Unavailable").astype(str)
+        + shared_metric_details
+    )
+    output["neighborhood_metric_tooltip"] = (
+        "<b>"
+        + output["nta_name"].fillna("Unavailable").astype(str)
+        + "</b><br/>Borough: "
+        + output["borough"].fillna("Unavailable").astype(str)
+        + shared_metric_details
+    )
+    output["nta_summary_tooltip"] = output["neighborhood_metric_tooltip"]
     return output
 
 
@@ -290,8 +546,52 @@ def load_feature_table(
     return load_optional_table(
         database_path,
         full_table_name,
-        [*id_columns, *DEMOGRAPHIC_METRICS.keys()],
+        [*id_columns, "borough", "tract_count", *DEMOGRAPHIC_METRICS.keys()],
     )
+
+
+def load_curated_poi_count_data(database_path: str | Path) -> pd.DataFrame:
+    """Load minimal curated POI columns needed for geography-level counts."""
+
+    if table_exists(database_path, POI_V2_TABLE):
+        poi = load_optional_table(database_path, POI_V2_TABLE, ["lat", "lon"])
+        if not poi.empty:
+            return poi[["lat", "lon"]].copy()
+    if table_exists(database_path, POI_TABLE):
+        poi = load_optional_table(database_path, POI_TABLE, ["lat", "lon"])
+        if not poi.empty:
+            return poi[["lat", "lon"]].copy()
+    return pd.DataFrame(columns=["lat", "lon"])
+
+
+def load_public_poi_count_data(
+    database_path: str | Path,
+    selected_categories: tuple[str, ...] = CORE_PUBLIC_TOOLTIP_CATEGORIES,
+) -> pd.DataFrame:
+    """Load minimal public POI columns needed for geography-level counts."""
+
+    if not table_exists(database_path, PUBLIC_POI_TABLE):
+        return pd.DataFrame(columns=["category", "lat", "lon"])
+
+    categories = tuple(
+        category
+        for category in (
+            canonical_public_poi_category(value) for value in selected_categories
+        )
+        if category in CATEGORY_SLUGS
+    )
+    if categories:
+        literal_categories = ", ".join(_sql_quote(category) for category in categories)
+        query = (
+            f"SELECT category, lat, lon "
+            f"FROM {PUBLIC_POI_TABLE} "
+            f"WHERE category IN ({literal_categories})"
+        )
+    else:
+        query = f"SELECT category, lat, lon FROM {PUBLIC_POI_TABLE} WHERE 1 = 0"
+
+    with DuckDBService(database_path, read_only=True) as duckdb_service:
+        return duckdb_service.query_df(query)
 
 
 def load_poi_map_data(
@@ -344,6 +644,55 @@ def load_poi_map_data(
         stats={
             "poi_count": int(len(points)),
             "source_list_count": len(available_poi_source_lists(points)),
+        },
+    )
+
+
+def load_public_poi_map_data(
+    database_path: str | Path,
+    selected_categories: tuple[str, ...] = DEFAULT_PUBLIC_POI_CATEGORIES,
+) -> PoiMapData:
+    """Load app-ready public POIs filtered to the selected category set."""
+
+    categories = tuple(
+        category
+        for category in (
+            canonical_public_poi_category(value) for value in selected_categories
+        )
+        if category in CATEGORY_SLUGS
+    )
+    if not table_exists(database_path, PUBLIC_POI_TABLE):
+        return PoiMapData(
+            points=pd.DataFrame(columns=PUBLIC_POI_COLUMNS),
+            source="unavailable",
+            stats={
+                "poi_count": 0,
+                "category_count": 0,
+                "configured_category_count": len(categories),
+            },
+        )
+
+    if categories:
+        literal_categories = ", ".join(_sql_quote(category) for category in categories)
+        query = (
+            f"SELECT {', '.join(PUBLIC_POI_COLUMNS)} "
+            f"FROM {PUBLIC_POI_TABLE} "
+            f"WHERE category IN ({literal_categories})"
+        )
+    else:
+        query = f"SELECT {', '.join(PUBLIC_POI_COLUMNS)} FROM {PUBLIC_POI_TABLE} WHERE 1 = 0"
+
+    with DuckDBService(database_path, read_only=True) as duckdb_service:
+        public_poi = duckdb_service.query_df(query)
+
+    points = prepare_public_poi_points(public_poi)
+    return PoiMapData(
+        points=points,
+        source="duckdb_public",
+        stats={
+            "poi_count": int(len(points)),
+            "category_count": len(available_public_poi_categories(points)),
+            "configured_category_count": len(categories),
         },
     )
 
@@ -459,6 +808,105 @@ def filter_poi_points_by_source_lists(
     return poi.loc[mask].copy()
 
 
+def prepare_public_poi_points(poi: pd.DataFrame) -> pd.DataFrame:
+    """Normalize public POI records for PyDeck filtering and hover tooltips."""
+
+    output = poi.copy()
+    for column in PUBLIC_POI_COLUMNS:
+        if column not in output.columns:
+            output[column] = pd.NA
+
+    output["lat"] = pd.to_numeric(output["lat"], errors="coerce")
+    output["lon"] = pd.to_numeric(output["lon"], errors="coerce")
+    output["category"] = output["category"].apply(canonical_public_poi_category)
+    output = output.dropna(subset=["lat", "lon"]).copy()
+    if output.empty:
+        return output
+
+    category_order = available_public_poi_categories(output)
+    color_lookup = {
+        category: PUBLIC_POI_COLOR_PALETTE[index % len(PUBLIC_POI_COLOR_PALETTE)]
+        for index, category in enumerate(category_order)
+    }
+    output["category_display"] = output["category"].apply(format_poi_category)
+    output["subcategory_display"] = output["subcategory"].fillna("").astype(str).str.strip()
+    output["source_display"] = output["source_system"].apply(format_public_poi_source)
+    output["poi_color"] = output["category"].map(color_lookup).apply(
+        lambda color: color if isinstance(color, list) else [50, 112, 194, 190]
+    )
+    output["tooltip_html"] = (
+        "<b>"
+        + output["name"].fillna("Unnamed POI").astype(str)
+        + "</b><br/>Category: "
+        + output["category_display"].fillna("Other").astype(str)
+        + "<br/>Source: "
+        + output["source_display"].fillna("Unknown source").astype(str)
+    )
+    with_subcategory = output["subcategory_display"].ne("")
+    output.loc[with_subcategory, "tooltip_html"] = (
+        output.loc[with_subcategory, "tooltip_html"]
+        + "<br/>Subtype: "
+        + output.loc[with_subcategory, "subcategory_display"]
+    )
+    with_address = output["address"].fillna("").astype(str).str.strip().ne("")
+    output.loc[with_address, "tooltip_html"] = (
+        output.loc[with_address, "tooltip_html"]
+        + "<br/>"
+        + output.loc[with_address, "address"].fillna("").astype(str)
+    )
+    return output
+
+
+def filter_public_poi_points_by_categories(
+    poi: pd.DataFrame,
+    selected_categories: tuple[str, ...],
+) -> pd.DataFrame:
+    """Filter public POIs to the selected category slugs."""
+
+    if poi.empty or not selected_categories:
+        return poi.iloc[0:0].copy()
+
+    selected = {
+        canonical_public_poi_category(category)
+        for category in selected_categories
+        if canonical_public_poi_category(category)
+    }
+    return poi.loc[poi["category"].isin(selected)].copy()
+
+
+def filter_points_to_supported_geography(
+    points: pd.DataFrame,
+    geography: gpd.GeoDataFrame,
+) -> pd.DataFrame:
+    """Filter point rows to those that fall within the loaded tract geography."""
+
+    if points.empty:
+        return points.copy()
+    if geography.empty or "geometry" not in geography.columns:
+        return points.iloc[0:0].copy()
+
+    valid_geometries = geography.geometry.dropna()
+    valid_geometries = valid_geometries[~valid_geometries.is_empty]
+    if valid_geometries.empty:
+        return points.iloc[0:0].copy()
+
+    coverage_geometry = valid_geometries.union_all()
+    min_x, min_y, max_x, max_y = coverage_geometry.bounds
+    bbox_mask = (
+        points["lon"].between(min_x, max_x)
+        & points["lat"].between(min_y, max_y)
+    )
+    if not bbox_mask.any():
+        return points.iloc[0:0].copy()
+
+    bounded = points.loc[bbox_mask].copy()
+    inside_mask = [
+        coverage_geometry.intersects(Point(lon, lat))
+        for lon, lat in zip(bounded["lon"], bounded["lat"], strict=True)
+    ]
+    return bounded.loc[inside_mask].copy()
+
+
 def load_tract_geometries(
     tract_path: str | Path,
     tract_id_col: str = "GEOID",
@@ -539,7 +987,7 @@ def build_neighborhood_geometries(
     tract_map: gpd.GeoDataFrame,
     nta_features: pd.DataFrame,
 ) -> gpd.GeoDataFrame:
-    """Dissolve tracts into neighborhood boundaries and attach NTA metrics."""
+    """Dissolve tracts into neighborhood boundaries and attach NTA-native metrics."""
 
     if tract_map.empty:
         return gpd.GeoDataFrame(
@@ -559,7 +1007,7 @@ def build_neighborhood_geometries(
 
     feature_columns = [
         column
-        for column in ["nta_id", "nta_name", *DEMOGRAPHIC_METRICS.keys()]
+        for column in ["nta_id", "nta_name", "borough", "tract_count", *DEMOGRAPHIC_METRICS.keys()]
         if column in nta_features.columns
     ]
     if feature_columns:
@@ -567,7 +1015,11 @@ def build_neighborhood_geometries(
             nta_features[feature_columns].drop_duplicates("nta_id"),
             on=["nta_id", "nta_name"] if "nta_name" in feature_columns else ["nta_id"],
             how="left",
+            suffixes=("", "_feature"),
         )
+        if "borough_feature" in dissolved.columns:
+            dissolved["borough"] = dissolved["borough_feature"].combine_first(dissolved["borough"])
+            dissolved = dissolved.drop(columns=["borough_feature"])
 
     for metric in DEMOGRAPHIC_METRICS:
         if metric not in dissolved.columns:
@@ -577,31 +1029,69 @@ def build_neighborhood_geometries(
     return dissolved[BASE_COLUMNS + ["geometry"]].copy()
 
 
-def prepare_base_map_data(
+def load_base_geography_data(
     database_path: str | Path,
     tract_path: str | Path,
     tract_id_col: str = "GEOID",
-    metric: str = "median_income",
-) -> BaseMapData:
-    """Load and prepare Neighborhood Explorer tract and neighborhood layers."""
-
-    if metric not in DEMOGRAPHIC_METRICS:
-        raise ValueError(f"Unsupported demographic metric: {metric}")
+ ) -> BaseGeographyData:
+    """Load geography, feature, and POI-summary inputs shared across metrics."""
 
     mapping = load_mapping(database_path)
     tract_features = load_feature_table(database_path, TRACT_FEATURE_TABLE, ["tract_id"])
     nta_features = load_feature_table(database_path, NTA_FEATURE_TABLE, ["nta_id", "nta_name"])
+    curated_poi_points = load_curated_poi_count_data(database_path)
+    public_poi_points = load_public_poi_count_data(
+        database_path,
+        selected_categories=CORE_PUBLIC_TOOLTIP_CATEGORIES,
+    )
 
     tracts = load_tract_geometries(tract_path, tract_id_col=tract_id_col)
     tract_map = attach_tract_attributes(tracts, mapping, tract_features)
     neighborhoods = build_neighborhood_geometries(tract_map, nta_features)
+    tract_map = add_poi_summary_columns(
+        tract_map,
+        geography_id_col="tract_id",
+        curated_points=curated_poi_points,
+        public_points=public_poi_points,
+    )
+    neighborhoods = add_poi_summary_columns(
+        neighborhoods,
+        geography_id_col="nta_id",
+        curated_points=curated_poi_points,
+        public_points=public_poi_points,
+    )
+    tract_map = add_demographic_summary_columns(tract_map)
+    neighborhoods = add_demographic_summary_columns(neighborhoods)
 
-    tract_map = add_tooltip_columns(
-        add_demographic_summary_columns(add_metric_display_columns(tract_map, metric))
+    return BaseGeographyData(
+        tracts=tract_map,
+        neighborhoods=neighborhoods,
+        stats={
+            "tract_count": int(len(tract_map)),
+            "neighborhood_count": (
+                int(neighborhoods["nta_id"].nunique(dropna=True))
+                if "nta_id" in neighborhoods
+                else 0
+            ),
+            "database_ready": Path(database_path).exists(),
+            "mapping_ready": table_exists(database_path, TRACT_TO_NTA_TABLE),
+            "tract_features_ready": table_exists(database_path, TRACT_FEATURE_TABLE),
+            "nta_features_ready": table_exists(database_path, NTA_FEATURE_TABLE),
+        },
     )
-    neighborhoods = add_tooltip_columns(
-        add_demographic_summary_columns(add_metric_display_columns(neighborhoods, metric))
-    )
+
+
+def build_base_map_data_from_loaded(
+    geography_data: BaseGeographyData,
+    metric: str = "median_income",
+) -> BaseMapData:
+    """Apply the selected metric to preloaded geography layers."""
+
+    if metric not in DEMOGRAPHIC_METRICS:
+        raise ValueError(f"Unsupported demographic metric: {metric}")
+
+    tract_map = add_tooltip_columns(add_metric_display_columns(geography_data.tracts, metric))
+    neighborhoods = add_tooltip_columns(add_metric_display_columns(geography_data.neighborhoods, metric))
 
     metric_values = (
         pd.to_numeric(tract_map[metric], errors="coerce")
@@ -609,22 +1099,29 @@ def prepare_base_map_data(
         else pd.Series(dtype="float64")
     )
     stats = {
-        "tract_count": int(len(tract_map)),
-        "neighborhood_count": (
-            int(neighborhoods["nta_id"].nunique(dropna=True))
-            if "nta_id" in neighborhoods
-            else 0
-        ),
+        **geography_data.stats,
         "metric_non_null_count": int(metric_values.notna().sum()),
         "metric_coverage": float(metric_values.notna().mean()) if len(metric_values) else 0.0,
         "metric_label": metric_label(metric),
-        "database_ready": Path(database_path).exists(),
-        "mapping_ready": table_exists(database_path, TRACT_TO_NTA_TABLE),
-        "tract_features_ready": table_exists(database_path, TRACT_FEATURE_TABLE),
-        "nta_features_ready": table_exists(database_path, NTA_FEATURE_TABLE),
     }
 
     return BaseMapData(tracts=tract_map, neighborhoods=neighborhoods, metric=metric, stats=stats)
+
+
+def prepare_base_map_data(
+    database_path: str | Path,
+    tract_path: str | Path,
+    tract_id_col: str = "GEOID",
+    metric: str = "median_income",
+) -> BaseMapData:
+    """Backward-compatible wrapper that loads geography then applies a metric."""
+
+    geography_data = load_base_geography_data(
+        database_path=database_path,
+        tract_path=tract_path,
+        tract_id_col=tract_id_col,
+    )
+    return build_base_map_data_from_loaded(geography_data, metric=metric)
 
 
 def _polygon_coordinates(geometry: Polygon) -> list[list[list[float]]]:
@@ -676,6 +1173,8 @@ def build_base_map_deck(
     show_demographics: bool = True,
     poi_points: pd.DataFrame | None = None,
     show_pois: bool = False,
+    public_poi_points: pd.DataFrame | None = None,
+    show_public_pois: bool = False,
     center_lat: float = 40.7128,
     center_lon: float = -74.0060,
     zoom: int = 10,
@@ -686,41 +1185,77 @@ def build_base_map_deck(
     demographic_layer = map_data.neighborhoods if show_neighborhoods else map_data.tracts
 
     layers = []
+    demographic_tooltip = "neighborhood_metric_tooltip" if show_neighborhoods else "selected_metric_tooltip"
+
     if show_demographics:
         layers.append(
             pdk.Layer(
                 "PolygonLayer",
                 id="demographic-fill",
-                data=_polygon_records(demographic_layer, "selected_metric_tooltip"),
+                data=_polygon_records(demographic_layer, demographic_tooltip),
                 get_polygon="polygon",
                 stroked=True,
                 filled=True,
                 get_fill_color="fill_color",
                 get_line_color=[22, 28, 32, 145],
-                get_line_width=54 if show_neighborhoods else 26,
+                get_line_width=46 if show_neighborhoods else 26,
                 line_width_min_pixels=1,
                 pickable=True,
                 auto_highlight=True,
             )
         )
-
-    layers.append(
-        pdk.Layer(
-            "PolygonLayer",
-            id="nta-boundaries",
-            data=_polygon_records(map_data.neighborhoods, "nta_summary_tooltip"),
-            get_polygon="polygon",
-            stroked=True,
-            filled=not show_demographics,
-            get_line_color=[0, 0, 0, 210],
-            get_line_width=46,
-            line_width_min_pixels=1,
-            get_fill_color=[0, 0, 0, 0],
-            pickable=not show_demographics,
-            auto_highlight=not show_demographics,
-            highlight_color=[0, 0, 0, 28],
+    if show_neighborhoods and not show_demographics:
+        layers.append(
+            pdk.Layer(
+                "PolygonLayer",
+                id="neighborhood-boundaries",
+                data=_polygon_records(map_data.neighborhoods, "nta_summary_tooltip"),
+                get_polygon="polygon",
+                stroked=True,
+                filled=True,
+                get_line_color=[0, 0, 0, 210],
+                get_line_width=46,
+                line_width_min_pixels=1,
+                get_fill_color=[0, 0, 0, 0],
+                pickable=True,
+                auto_highlight=True,
+                highlight_color=[0, 0, 0, 28],
+            )
         )
-    )
+    if show_neighborhoods:
+        layers.append(
+            pdk.Layer(
+                "PolygonLayer",
+                id="tract-boundaries",
+                data=_polygon_records(map_data.tracts, "selected_metric_tooltip"),
+                get_polygon="polygon",
+                stroked=True,
+                filled=False,
+                get_line_color=[22, 28, 32, 90],
+                get_line_width=12,
+                line_width_min_pixels=1,
+                pickable=False,
+                auto_highlight=False,
+            )
+        )
+    else:
+        layers.append(
+            pdk.Layer(
+                "PolygonLayer",
+                id="nta-boundaries",
+                data=_polygon_records(map_data.neighborhoods, "nta_summary_tooltip"),
+                get_polygon="polygon",
+                stroked=True,
+                filled=not show_demographics,
+                get_line_color=[0, 0, 0, 210],
+                get_line_width=46,
+                line_width_min_pixels=1,
+                get_fill_color=[0, 0, 0, 0],
+                pickable=not show_demographics,
+                auto_highlight=not show_demographics,
+                highlight_color=[0, 0, 0, 28],
+            )
+        )
 
     if show_pois and poi_points is not None and not poi_points.empty:
         layers.append(
@@ -734,6 +1269,26 @@ def build_base_map_deck(
                 get_radius=48,
                 radius_min_pixels=5,
                 radius_max_pixels=13,
+                stroked=True,
+                line_width_min_pixels=1,
+                pickable=True,
+                auto_highlight=True,
+                highlight_color=[255, 255, 255, 90],
+            )
+        )
+
+    if show_public_pois and public_poi_points is not None and not public_poi_points.empty:
+        layers.append(
+            pdk.Layer(
+                "ScatterplotLayer",
+                id="public-poi-points",
+                data=public_poi_points.to_dict("records"),
+                get_position="[lon, lat]",
+                get_fill_color="poi_color",
+                get_line_color=[255, 255, 255, 210],
+                get_radius=34,
+                radius_min_pixels=4,
+                radius_max_pixels=10,
                 stroked=True,
                 line_width_min_pixels=1,
                 pickable=True,

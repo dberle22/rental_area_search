@@ -9,25 +9,30 @@ same topic, use the ownership table below to decide which one should be updated.
 | Question | Start with |
 | --- | --- |
 | How is the system supposed to fit together? | `architecture.md` |
+| How are Python packages organized and where should code live? | `packages.md` |
 | What DuckDB tables power the apps? | `data_model.md` |
 | How do I rebuild local data? | `pipeline_plan.md` |
+| What POI categories exist, what files, what status? | `poi_categories.md` |
 | Where do raw sources, URLs, and caveats live? | `source_inventory.md` |
 | What decisions have already been made? | `decision_log.md` |
-| What should we work on next? | `planning/next_workstreams_plan.md` |
+| What should we work on next? | `planning/workstreams.md` |
 
 ## Canonical Ownership
 
 | Topic | Canonical doc |
 | --- | --- |
 | System architecture and data flow | `architecture.md` |
+| Python package boundaries and interactions | `packages.md` |
 | Gold table contracts, source/build manifest, and table QA | `data_model.md` |
 | Local build order and commands | `pipeline_plan.md` |
+| POI category definitions, file sources, and ingestion status | `poi_categories.md` |
 | Raw source URLs, local path conventions, and caveats | `source_inventory.md` |
 | Durable decisions and rationale | `decision_log.md` |
 | Listing CSV input schema | `contracts/listing_csv_contract.md` |
 | Neighborhood Explorer app behavior | `app/neighborhood_explorer_app.md` |
 | Property Explorer app behavior | `app/property_explorer_app.md` |
-| Active next workstreams | `planning/next_workstreams_plan.md` |
+| Active workstreams and to-dos | `planning/workstreams.md` |
+| Historical workstream context | `planning/next_workstreams_plan.md` |
 | Future/post-MVP ideas | `planning/post_mvp_improvements.md` |
 | Historical sprint notes | `archive/sprint_artifacts/` |
 
@@ -37,6 +42,7 @@ same topic, use the ownership table below to decide which one should be updated.
 docs/
   README.md
   architecture.md
+  packages.md
   data_model.md
   pipeline_plan.md
   source_inventory.md

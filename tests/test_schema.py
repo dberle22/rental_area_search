@@ -29,6 +29,9 @@ def test_initialize_database_creates_expected_property_explorer_gold_tables(tmp_
         "fct_property_context",
         "fct_tract_features",
         "fct_user_shortlist",
+        "stg_user_poi_google_takeout",
+        "stg_user_poi_manual_upload",
+        "stg_user_poi_web_scrape",
     ]
 
 
@@ -47,7 +50,7 @@ def test_initialize_database_is_idempotent(tmp_path) -> None:
             """
         )["table_count"].iloc[0]
 
-    assert table_count == 10
+    assert table_count == 13
 
 
 def test_user_poi_v2_schema_is_source_aware(tmp_path) -> None:
@@ -69,10 +72,19 @@ def test_user_poi_v2_schema_is_source_aware(tmp_path) -> None:
     assert columns == [
         "poi_id",
         "source_system",
+        "source_systems",
+        "primary_source_system",
         "source_record_id",
         "source_list_names",
+        "category",
+        "subcategory",
+        "detail_level_3",
         "categories",
         "primary_category",
+        "subcategories",
+        "primary_subcategory",
+        "detail_level_3_values",
+        "primary_detail_level_3",
         "name",
         "input_title",
         "note",
@@ -84,6 +96,7 @@ def test_user_poi_v2_schema_is_source_aware(tmp_path) -> None:
         "address",
         "lat",
         "lon",
+        "has_place_details",
         "details_fetched_at",
     ]
 
@@ -116,6 +129,36 @@ def test_public_poi_schema_matches_wave_contract(tmp_path) -> None:
         "lon",
         "attributes",
         "snapshotted_at",
+    ]
+
+
+def test_nta_features_schema_matches_refined_contract(tmp_path) -> None:
+    database_path = tmp_path / "nyc_property_finder.duckdb"
+
+    initialize_database(database_path)
+
+    with DuckDBService(database_path, read_only=True) as duckdb_service:
+        columns = duckdb_service.query_df(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'property_explorer_gold'
+              AND table_name = 'fct_nta_features'
+            ORDER BY ordinal_position
+            """
+        )["column_name"].tolist()
+
+    assert columns == [
+        "nta_id",
+        "nta_name",
+        "borough",
+        "tract_count",
+        "median_income",
+        "median_rent",
+        "median_home_value",
+        "pct_bachelors_plus",
+        "median_age",
+        "crime_rate_proxy",
     ]
 
 

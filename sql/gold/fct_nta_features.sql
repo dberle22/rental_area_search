@@ -7,7 +7,9 @@
 -- Business logic:
 --   1. Join tract features to the authoritative tract-to-NTA mapping.
 --   2. Use an inner join so only mapped tracts contribute to NTA summaries.
---   3. Aggregate numeric tract metrics with median(), matching the current
+--   3. Carry forward NTA-native context fields (`borough`, `tract_count`) so
+--      downstream neighborhood views are not forced to reconstruct them.
+--   4. Aggregate numeric tract metrics with median(), matching the current
 --      Python pipeline implementation.
 --   4. Crime is deferred for the MVP, but the nullable column is retained.
 
@@ -16,6 +18,8 @@ WITH mapped_tract_features AS (
     SELECT
         mapping.nta_id,
         mapping.nta_name,
+        mapping.borough,
+        tract_features.tract_id,
         CASE
             WHEN isnan(CAST(tract_features.median_income AS DOUBLE)) THEN NULL
             ELSE CAST(tract_features.median_income AS DOUBLE)
@@ -45,7 +49,8 @@ WITH mapped_tract_features AS (
         SELECT DISTINCT
             tract_id,
             nta_id,
-            nta_name
+            nta_name,
+            borough
         FROM property_explorer_gold.dim_tract_to_nta
     ) AS mapping
         ON tract_features.tract_id = mapping.tract_id
@@ -53,6 +58,8 @@ WITH mapped_tract_features AS (
 SELECT
     CAST(nta_id AS VARCHAR) AS nta_id,
     CAST(nta_name AS VARCHAR) AS nta_name,
+    string_agg(DISTINCT CAST(borough AS VARCHAR), ' / ' ORDER BY CAST(borough AS VARCHAR)) AS borough,
+    COUNT(DISTINCT tract_id) AS tract_count,
     median(median_income) AS median_income,
     median(median_rent) AS median_rent,
     median(median_home_value) AS median_home_value,

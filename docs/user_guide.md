@@ -1,22 +1,32 @@
 # User Guide
 
-Short overview of how to use the Repo and the Streamlit Apps.
+Short overview of common curated POI workflows in the repo.
 
-## Add Google Maps Saved Places
+## Curated POI Overview
 
-Use this flow when you have a single Google Takeout saved-list CSV, such as:
+Curated POIs currently have one active ingestion path:
+
+- Google Takeout saved lists under `data/raw/google_maps/poi_nyc/`
+
+The active implementation now lives under:
 
 ```text
-data/raw/google_maps/New York - Bookstores.csv
+src/nyc_property_finder/curated_poi/google_takeout/
 ```
 
-The pipeline turns that CSV into a deduplicated, geocoded table:
+The preferred CLI entry point is:
+
+```text
+nyc_property_finder.pipelines.ingest_curated_poi_google_takeout
+```
+
+This pipeline writes:
 
 ```text
 property_explorer_gold.dim_user_poi_v2
 ```
 
-### One-Time Setup
+## One-Time Setup
 
 Create a local `.env` file in the repo root:
 
@@ -29,51 +39,115 @@ Enable **Places API (New)** in the Google Cloud project for that key.
 
 The key is read from `.env`, and `.env` is ignored by git.
 
-### Run One CSV
+## Update POI Categories
 
-From the repo root:
+Use this workflow whenever you want to add or adjust curated taxonomy.
+
+### Where taxonomy lives
+
+- Config rules: `config/poi_categories.yaml`
+- Reference documentation: `docs/poi_categories.md`
+
+### What to update
+
+1. Update `config/poi_categories.yaml`.
+2. Add or revise the file-level rule under `curated_taxonomy.files`.
+3. If needed, add or revise `tag_aliases` used to derive subcategory or level-3 descriptors.
+4. Update `docs/poi_categories.md` so the documented taxonomy matches the config.
+
+### Taxonomy model
+
+- `category`: top-level group such as `restaurants`, `bars`, `music_venues`
+- `subcategory`: one stable, primary filter bucket
+- `detail_level_3`: flexible descriptor layer that can hold one or many tags
+
+Examples:
+
+- `restaurants / japanese / ramen|sushi|izakaya`
+- `restaurants / sandwiches / deli|italian`
+- `bars / irish_pub /`
+
+## Export Google Takeout
+
+Use this flow when your places are saved as Google Maps lists.
+
+1. Go to Google Takeout: https://takeout.google.com/
+2. Deselect all products.
+3. Select Saved.
+4. Create a one-time export.
+5. Download the zip when the email arrives.
+6. Put the CSVs you want to ingest under `data/raw/google_maps/poi_nyc/`.
+
+## Dry Run A Batch
+
+Use dry run before any live ingestion. It does not hit the API and does not
+write DuckDB.
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m nyc_property_finder.pipelines.ingest_google_places_poi "data/raw/google_maps/New York - Bookstores.csv"
+PYTHONPATH=src .venv/bin/python -m nyc_property_finder.pipelines.ingest_curated_poi_google_takeout \
+  --input-dir data/raw/google_maps/poi_nyc \
+  --dry-run
 ```
 
-To use another Google Takeout CSV, replace the quoted path with your file:
+Dry-run reports:
+
+- per-file row counts
+- category assignments
+- subcategory assignments
+- level-3 descriptor values
+- estimated Text Search calls
+- estimated Place Details calls
+
+## Run A Batch
+
+Use this to process the full curated Google Takeout directory.
 
 ```bash
-PYTHONPATH=src .venv/bin/python -m nyc_property_finder.pipelines.ingest_google_places_poi "data/raw/google_maps/YOUR_FILE.csv"
+PYTHONPATH=src .venv/bin/python -m nyc_property_finder.pipelines.ingest_curated_poi_google_takeout \
+  --input-dir data/raw/google_maps/poi_nyc
 ```
 
-### What The Pipeline Does
+This flow:
 
-The run has three steps:
+1. Parses every CSV in `data/raw/google_maps/poi_nyc/`
+2. Resolves rows to Google `place_id`s
+3. Fetches minimal Place Details for unique places
+4. Writes the current batch into `property_explorer_gold.stg_user_poi_google_takeout`
+5. Promotes that staged batch into canonical `property_explorer_gold.dim_user_poi_v2`
 
-1. Resolves each CSV row to a Google `place_id`.
-2. Fetches minimal Place Details for each unique place ID.
-3. Writes the deduplicated table to DuckDB.
+The API calls are cache-first. Re-running the same inputs should make zero new
+API calls unless the inputs changed.
 
-The API calls are cache-first. Re-running the same CSV should make zero new API
-calls unless new places were added.
+## Run One CSV
 
-### Fields Requested From Google
+Use this while iterating on one curated file.
 
-Text Search asks only for:
+```bash
+PYTHONPATH=src .venv/bin/python -m nyc_property_finder.pipelines.ingest_curated_poi_google_takeout \
+  data/raw/google_maps/poi_nyc/poi_bookstores_nyc.csv
+```
+
+## Guardrails
+
+Defaults:
 
 ```text
-places.id
+max Text Search calls: 50
+max Place Details calls: 50
 ```
 
-Place Details asks only for:
+If a run would exceed those caps, it stops before making the extra calls.
 
-```text
-displayName
-formattedAddress
-location
+Override when needed:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m nyc_property_finder.pipelines.ingest_curated_poi_google_takeout \
+  --input-dir data/raw/google_maps/poi_nyc \
+  --max-text-search-calls 100 \
+  --max-details-calls 100
 ```
 
-The pipeline does not request reviews, ratings, hours, photos, or other richer
-metadata.
-
-### Outputs
+## Outputs
 
 Intermediate caches:
 
@@ -93,27 +167,11 @@ DuckDB table:
 
 ```text
 data/processed/nyc_property_finder.duckdb
+property_explorer_gold.stg_user_poi_google_takeout
 property_explorer_gold.dim_user_poi_v2
 ```
 
-### Guardrails
-
-Defaults:
-
-```text
-max Text Search calls: 50
-max Place Details calls: 50
-```
-
-If a run would exceed those caps, it stops before making the extra calls.
-
-You can override the caps:
-
-```bash
-PYTHONPATH=src .venv/bin/python -m nyc_property_finder.pipelines.ingest_google_places_poi "data/raw/google_maps/New York - Bookstores.csv" --max-text-search-calls 100 --max-details-calls 100
-```
-
-### Check The Result
+## Check The Result
 
 Open the summary:
 
@@ -127,7 +185,7 @@ Review duplicate or missing-coordinate warnings:
 cat data/interim/google_places/place_pipeline_qa.csv
 ```
 
-Quick table count:
+Quick row count:
 
 ```bash
 PYTHONPATH=src .venv/bin/python - <<'PY'
@@ -143,11 +201,16 @@ with DuckDBService("data/processed/nyc_property_finder.duckdb", read_only=True) 
 PY
 ```
 
-## FAQs
+## Compatibility Note
 
-### How do I add new Geographic areas (Counties, Tracts, Places, etc)?
+The older CLI path still exists:
 
-### How do I add new Points of Interest?
+```text
+nyc_property_finder.pipelines.ingest_google_places_poi
+```
 
-Use the Google Maps Saved Places flow above for a single Google Takeout CSV.
-Directory-wide ingestion and multi-source merging are later improvements.
+But new documentation should use:
+
+```text
+nyc_property_finder.pipelines.ingest_curated_poi_google_takeout
+```

@@ -3,6 +3,18 @@
 This plan captures the post-Sprint 4 workstreams needed to make Property
 Explorer more complete and credible after the first usable map/list/detail app.
 
+## Completed Since This Doc Was Written
+
+- **Public POI baseline** (`dim_public_poi`): all 5 waves complete as of
+  2026-04-23. 56,540 rows across 27 categories (transit, parks, everyday retail,
+  civic, culture). Pipeline: `ingest_public_poi`. See `docs/poi_categories.md`.
+- **Workstream 3 (Google Places API POI Enrichment)**: pipeline built and
+  working. Resolve → enrich → deduplicate flow with cache-first API calls,
+  call caps, and `dim_user_poi_v2` output. See Workstream 3 below for details.
+- **Curated POI expansion**: 15 new category CSVs added to
+  `data/raw/google_maps/poi_nyc/`. Ingestion into `dim_user_poi_v2` is the
+  active work on the `curated-poi-ingestion` branch.
+
 ## Review Agenda
 
 Use this doc to decide which workstream to run next. The current candidate
@@ -225,11 +237,18 @@ Near-term app behavior:
 - Missing data never silently becomes zero.
 - Total score is not displayed without visible component/status context.
 
-## Workstream 3: Google Places API POI Enrichment
+## Workstream 3: Google Places API POI Enrichment — COMPLETE
 
 Goal: improve POI quality by resolving Google Maps saved-list places to stable
 Google Places records once, caching the results, and avoiding repeated paid API
 calls.
+
+**Status**: Built and working. The pipeline (`ingest_google_places_poi`) parses
+Takeout CSVs from `data/raw/google_maps/poi_nyc/`, resolves place names to
+Google Place IDs via Places API Text Search + Place Details (cache-first, capped
+calls), deduplicates on Place ID, and writes `dim_user_poi_v2`. Cache artifacts
+live at `data/interim/google_places/`. Active next step: run the pipeline
+against all 15 `poi_nyc/` CSVs on the `curated-poi-ingestion` branch.
 
 ### Recommended Approach
 
@@ -514,17 +533,15 @@ Likely table additions after the next workstreams:
 
 ## Suggested Execution Order
 
-1. ACS neighborhood context.
-2. Scoring redesign or score de-emphasis decision.
-3. Google Places cached enrichment.
-4. StreetEasy scraper.
-5. Shortlist comparison and app polish.
-
-Reasoning:
-
-- ACS fixes the biggest current data gap and unlocks real neighborhood context.
-- Scoring should not be refined too deeply before ACS and POI quality are
-  better, but the product should decide whether to hide/de-emphasize totals now.
-- Google Places improves personal context quality and category reliability.
-- StreetEasy expands listing supply, but it carries the most operational risk,
-  so it should be built as an optional adapter with manual CSV fallback.
+1. ~~Google Places cached enrichment.~~ Done — see Workstream 3 above.
+2. Complete curated POI ingestion (`curated-poi-ingestion` branch) — run all 15
+   `poi_nyc/` CSVs through the pipeline, review category assignments and
+   duplicate matches.
+3. ACS neighborhood context — fixes the biggest current data gap and unlocks
+   real neighborhood context for scoring and the neighborhood panel.
+4. Scoring redesign or score de-emphasis decision — do not refine deeply until
+   ACS and POI quality are stronger, but decide now whether to hide/de-emphasize
+   the total fit score.
+5. StreetEasy scraper — expands listing supply, but carries operational risk;
+   build as an optional adapter with manual CSV fallback.
+6. Shortlist comparison and app polish.
