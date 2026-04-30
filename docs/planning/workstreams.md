@@ -1,4 +1,9 @@
-# Active Workstreams
+# Workstreams — Historical Reference (WS1–WS6)
+
+> **Superseded on 2026-04-30.** WS1–WS6 are complete. The active backlog and
+> sprint plan now lives in `docs/planning/backlog.md`. The product strategy and
+> app/data product definitions live in `docs/planning/product_strategy.md`.
+> This file is kept as a historical record of the work done through WS6.
 
 Last updated: 2026-04-28
 
