@@ -147,7 +147,7 @@ Current curated package layout:
 | Package | Purpose | Status |
 | --- | --- | --- |
 | `curated_poi/google_takeout/` | Google Takeout saved-list ingestion, cache-first Places resolution, dry-run planning, and `dim_user_poi_v2` build | active |
-| `curated_poi/web_scraping/` | Editorial article extraction and normalization into curated POI inputs | planned |
+| `curated_poi/web_scraping/` | Editorial article extraction and normalization into curated POI inputs, organized by publication | active scaffold |
 | `curated_poi/excel_upload/` | Shared Excel or CSV submission workflow into curated POI inputs | planned |
 | `curated_poi/shared/` | Shared helpers meant to be reused across curated POI source paths | reserved |
 
@@ -170,16 +170,93 @@ Primary entry point: `pipelines/ingest_curated_poi_google_takeout.py`
 
 Compatibility alias: `pipelines/ingest_google_places_poi.py`
 
-#### Article Scraping (planned)
+#### Article Scraping (active scaffold)
 
 Identify editorial articles (Eater NYC maps, NYT lists, Pitchfork guides, etc.)
-and extract place name + metadata via custom scripts or LLM-assisted scraping.
-Output normalized to `data/raw/scraped/<category>_<source>_<date>.csv`, then
-fed into the same Places API resolve/enrich step as Takeout.
+and extract place name + metadata via publication-specific scrapers or a
+semi-manual fallback for one-off articles. The locked design is file-first:
+capture raw article output locally, normalize it into a shared CSV contract,
+review it, then feed it into the same Places resolve/enrich flow used by
+Google Takeout.
 
-Status: package path reserved at `curated_poi/web_scraping/`, implementation
-not yet built. See `docs/poi_categories.md` for the target article list per
-category.
+Package shape:
+
+```text
+src/nyc_property_finder/curated_poi/web_scraping/
+  base.py
+  normalize.py
+  registry.py
+  publications/
+    eater.py
+```
+
+Supporting config:
+
+```text
+config/curated_scrape_articles.yaml
+```
+
+Current first implemented slice:
+
+- locked Eater article registry
+- config-backed article inventory and status tracker
+- local HTML or live URL export workflow for Eater
+- normalized CSV writer for QA review
+- publication-specific parser contract under `publications/`
+- no staging-table writer yet
+
+Recommended capture modes:
+
+- `parser`: structured publication-specific extraction
+- `semi_manual`: save page text or HTML locally, then run a lightweight extractor
+- `manual_seed`: hand-enter a normalized CSV when the source is low-volume or awkward
+
+Recommended file flow:
+
+```text
+article html/text
+  -> data/raw/scraped/raw/<publication>/<slug>_<date>.{html,txt,json}
+  -> data/raw/scraped/normalized/<category>_<publication>_<slug>_<date>.csv
+  -> property_explorer_gold.stg_user_poi_web_scrape
+  -> property_explorer_gold.dim_user_poi_v2
+```
+
+Normalized scrape rows should preserve enough metadata to support QA and strong
+Places matching. The minimum shared fields are:
+
+- `publisher`
+- `article_title`
+- `article_url`
+- `source_list_name`
+- `item_rank`
+- `item_name`
+- `item_url`
+- `raw_address`
+- `raw_description`
+- `raw_neighborhood`
+- `raw_borough`
+- `category`
+- `subcategory`
+- `detail_level_3`
+- `scraped_at`
+
+Normalization rules:
+
+- split multi-address mentions into distinct source rows before Places resolution
+- treat `item_name + raw_address` as the pre-resolution location grain
+- derive `category` and `subcategory` from article identity first
+- use description keywords only as fallback taxonomy hints
+- use Google Places metadata later for resolution and enrichment, not as the
+  primary taxonomy source
+
+Current entry point:
+
+`pipelines/export_curated_poi_eater_article.py`
+
+Status: first Eater publication scaffold is built for raw HTML or live URL
+capture into normalized CSVs. Downstream staging-table write and canonical
+merge work remain future tasks. See `docs/poi_categories.md` for the
+publication-organized target article list and taxonomy mapping.
 
 #### Public Excel Upload (planned)
 

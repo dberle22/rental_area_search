@@ -5,6 +5,7 @@ import pytest
 from nyc_property_finder.curated_poi.google_takeout.build_dim import build_dim_user_poi_v2
 from nyc_property_finder.curated_poi.google_takeout.cache import read_details_cache, read_resolution_cache
 from nyc_property_finder.curated_poi.google_takeout.client import (
+    PLACE_DETAILS_CACHE_SCHEMA_VERSION,
     PLACE_DETAILS_FIELD_MASK,
     TEXT_SEARCH_ID_FIELD_MASK,
     build_place_details_request,
@@ -34,6 +35,20 @@ from nyc_property_finder.curated_poi.google_takeout.pipeline import (
 from nyc_property_finder.curated_poi.google_takeout.resolve import resolve_place_ids
 from nyc_property_finder.curated_poi.google_takeout.summary import build_summary
 from nyc_property_finder.services.duckdb_service import DuckDBService
+
+
+def _current_details_cache_row(
+    google_place_id: str,
+    payload: dict[str, object] | None = None,
+    fetched_at: str = "2026-04-20T00:00:00+00:00",
+) -> dict[str, object]:
+    return {
+        "google_place_id": google_place_id,
+        "fetched_at": fetched_at,
+        "field_mask": PLACE_DETAILS_FIELD_MASK,
+        "cache_schema_version": PLACE_DETAILS_CACHE_SCHEMA_VERSION,
+        "payload": payload or {},
+    }
 
 
 def test_parse_google_places_saved_list_csv_preserves_takeout_metadata(tmp_path) -> None:
@@ -242,7 +257,7 @@ def test_plan_dry_run_uses_resolution_and_details_caches(tmp_path) -> None:
     )
     details_cache_path = tmp_path / "place_details_cache.jsonl"
     details_cache_path.write_text(
-        json.dumps({"google_place_id": "places/donovans", "payload": {"displayName": "Donovan's Pub"}}),
+        json.dumps(_current_details_cache_row("places/donovans", {"displayName": {"text": "Donovan's Pub"}})),
         encoding="utf-8",
     )
 
@@ -295,8 +310,15 @@ def test_read_details_cache_place_ids_accepts_wrapped_and_nested_payloads(tmp_pa
     details_cache_path.write_text(
         "\n".join(
             [
-                json.dumps({"google_place_id": "places/direct"}),
-                json.dumps({"payload": {"id": "places/nested"}}),
+                json.dumps(_current_details_cache_row("places/direct")),
+                json.dumps(
+                    {
+                        "google_place_id": "places/nested",
+                        "field_mask": PLACE_DETAILS_FIELD_MASK,
+                        "cache_schema_version": PLACE_DETAILS_CACHE_SCHEMA_VERSION,
+                        "payload": {"id": "places/nested"},
+                    }
+                ),
                 "not json",
             ]
         ),
@@ -430,13 +452,7 @@ def test_enrich_place_details_writes_jsonl_cache_and_respects_hits(tmp_path) -> 
     )
     details_cache_path = tmp_path / "place_details_cache.jsonl"
     details_cache_path.write_text(
-        json.dumps(
-            {
-                "google_place_id": "places/ursula",
-                "fetched_at": "2026-04-20T00:00:00+00:00",
-                "payload": {"displayName": {"text": "Ursula Bookshop"}},
-            }
-        )
+        json.dumps(_current_details_cache_row("places/ursula", {"displayName": {"text": "Ursula Bookshop"}}))
         + "\n",
         encoding="utf-8",
     )
@@ -480,15 +496,20 @@ def test_build_dim_user_poi_v2_uses_details_and_json_arrays(tmp_path) -> None:
     details_cache_path = tmp_path / "place_details_cache.jsonl"
     details_cache_path.write_text(
         json.dumps(
-            {
-                "google_place_id": "places/ursula",
-                "fetched_at": "2026-04-20T00:00:00+00:00",
-                "payload": {
+            _current_details_cache_row(
+                "places/ursula",
+                {
                     "displayName": {"text": "Ursula Bookshop"},
                     "formattedAddress": "1016 Union St, Brooklyn, NY",
                     "location": {"latitude": 40.674, "longitude": -73.963},
+                    "rating": 4.7,
+                    "userRatingCount": 812,
+                    "businessStatus": "OPERATIONAL",
+                    "editorialSummary": {"text": "Neighborhood favorite.", "languageCode": "en"},
+                    "priceLevel": "PRICE_LEVEL_MODERATE",
+                    "websiteUri": "https://ursulabookshop.com",
                 },
-            }
+            )
         )
         + "\n",
         encoding="utf-8",
@@ -519,6 +540,13 @@ def test_build_dim_user_poi_v2_uses_details_and_json_arrays(tmp_path) -> None:
     assert row["primary_detail_level_3"] == "deli"
     assert json.loads(row["note"]) == ["quiet", "cozy"]
     assert bool(row["has_place_details"]) is True
+    assert row["rating"] == 4.7
+    assert row["user_rating_count"] == 812
+    assert row["business_status"] == "OPERATIONAL"
+    assert row["editorial_summary"] == "Neighborhood favorite."
+    assert row["editorial_summary_language_code"] == "en"
+    assert row["price_level"] == "PRICE_LEVEL_MODERATE"
+    assert row["website_uri"] == "https://ursulabookshop.com"
 
 
 def test_pipeline_writes_dim_user_poi_v2(tmp_path) -> None:
@@ -693,15 +721,14 @@ def test_build_dim_user_poi_v2_falls_back_blank_subcategory_to_category(tmp_path
     details_cache_path = tmp_path / "place_details_cache.jsonl"
     details_cache_path.write_text(
         json.dumps(
-            {
-                "google_place_id": "places/essex",
-                "fetched_at": "2026-04-20T00:00:00+00:00",
-                "payload": {
+            _current_details_cache_row(
+                "places/essex",
+                {
                     "displayName": {"text": "Essex Market"},
                     "formattedAddress": "88 Essex St, New York, NY",
                     "location": {"latitude": 40.718, "longitude": -73.988},
                 },
-            }
+            )
         )
         + "\n",
         encoding="utf-8",
@@ -734,15 +761,14 @@ def test_build_summary_flags_duplicate_place_ids(tmp_path) -> None:
     details_cache_path = tmp_path / "place_details_cache.jsonl"
     details_cache_path.write_text(
         json.dumps(
-            {
-                "google_place_id": "places/bookclub",
-                "fetched_at": "2026-04-20T00:00:00+00:00",
-                "payload": {
+            _current_details_cache_row(
+                "places/bookclub",
+                {
                     "displayName": {"text": "Book Club Bar"},
                     "formattedAddress": "197 E 3rd St, New York, NY",
                     "location": {"latitude": 40.723, "longitude": -73.983},
                 },
-            }
+            )
         )
         + "\n",
         encoding="utf-8",
@@ -777,26 +803,24 @@ def test_build_summary_can_filter_to_current_source_record_ids(tmp_path) -> None
         "\n".join(
             [
                 json.dumps(
-                    {
-                        "google_place_id": "places/ursula",
-                        "fetched_at": "2026-04-20T00:00:00+00:00",
-                        "payload": {
+                    _current_details_cache_row(
+                        "places/ursula",
+                        {
                             "displayName": {"text": "Ursula Bookshop"},
                             "formattedAddress": "1016 Union St, Brooklyn, NY",
                             "location": {"latitude": 40.674, "longitude": -73.963},
                         },
-                    }
+                    )
                 ),
                 json.dumps(
-                    {
-                        "google_place_id": "places/legacy",
-                        "fetched_at": "2026-04-20T00:00:00+00:00",
-                        "payload": {
+                    _current_details_cache_row(
+                        "places/legacy",
+                        {
                             "displayName": {"text": "Legacy Books"},
                             "formattedAddress": "1 Legacy St, Brooklyn, NY",
                             "location": {"latitude": 40.670, "longitude": -73.960},
                         },
-                    }
+                    )
                 ),
             ]
         )
@@ -814,3 +838,53 @@ def test_build_summary_can_filter_to_current_source_record_ids(tmp_path) -> None
     assert summary["resolved_source_rows"] == 1
     assert summary["unique_google_place_ids"] == 1
     assert summary["dim_rows"] == 1
+
+
+def test_enrich_place_details_refreshes_stale_cache_rows(tmp_path) -> None:
+    resolution_cache_path = tmp_path / "place_resolution_cache.csv"
+    resolution_cache_path.write_text(
+        "\n".join(
+            [
+                "source_record_id,source_system,source_file,source_list_name,category,subcategory,detail_level_3,input_title,note,tags,comment,source_url,search_query,google_place_id,match_status",
+                "src_1,google_maps_takeout,Restaurants.csv,Restaurants,restaurants,restaurants,,Lucali,,,,url,query,places/lucali,top_candidate",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    details_cache_path = tmp_path / "place_details_cache.jsonl"
+    details_cache_path.write_text(
+        json.dumps(
+            {
+                "google_place_id": "places/lucali",
+                "fetched_at": "2026-04-20T00:00:00+00:00",
+                "payload": {"displayName": {"text": "Lucali"}},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    calls = []
+
+    def fetcher(place_id: str, api_key: str):
+        calls.append((place_id, api_key))
+        return {
+            "displayName": {"text": "Lucali"},
+            "formattedAddress": "575 Henry St, Brooklyn, NY",
+            "location": {"latitude": 40.681, "longitude": -74.0},
+            "rating": 4.8,
+        }
+
+    report = enrich_place_details(
+        resolution_cache_path=resolution_cache_path,
+        details_cache_path=details_cache_path,
+        api_key="secret",
+        max_details_calls=1,
+        fetcher=fetcher,
+    )
+    cache = read_details_cache(details_cache_path)
+
+    assert calls == [("places/lucali", "secret")]
+    assert report.details_cache_hits == 0
+    assert report.attempted_details_calls == 1
+    assert cache["places/lucali"]["field_mask"] == PLACE_DETAILS_FIELD_MASK
+    assert cache["places/lucali"]["cache_schema_version"] == PLACE_DETAILS_CACHE_SCHEMA_VERSION

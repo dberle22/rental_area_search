@@ -1,4 +1,9 @@
-# Active Workstreams
+# Workstreams — Historical Reference (WS1–WS6)
+
+> **Superseded on 2026-04-30.** WS1–WS6 are complete. The active backlog and
+> sprint plan now lives in `docs/planning/backlog.md`. The product strategy and
+> app/data product definitions live in `docs/planning/product_strategy.md`.
+> This file is kept as a historical record of the work done through WS6.
 
 Last updated: 2026-04-28
 
@@ -308,29 +313,274 @@ demographic coverage.
 ## WS6 — Curated POI Expansion: Scraping
 
 **Goal**: Add a scraping path for extracting places from editorial articles
-(Eater NYC maps, NYT lists, etc.) into `dim_user_poi_v2`.
+(Eater, Time Out, and semi-manual sources) into `dim_user_poi_v2`. Fully
+manual-seed inputs (Permanent Style, Substack Mismatch, Backseat Driver) are
+handled in WS7, not here.
 
-**Depends on**: WS2.5 complete (so staged ingest and canonical merge rules are
-defined before adding a new input path).
+**Depends on**: WS2.5 complete.
 
-- [ ] `[you]` Pick 2-3 articles to scrape first (e.g., Eater NYC "38 Essential
-  Restaurants", NYT "100 Best"). Add URLs to the scraped table in
-  `docs/poi_categories.md`.
-- [ ] `[you+agent]` Design the scraper module structure and output schema
-  (mirrors `data/raw/scraped/<category>_<source>_<date>.csv`) and target the
-  web-scrape staging table rather than writing straight to `dim_user_poi_v2`
-- [ ] `[agent]` Implement the first scraper (LLM-assisted extraction or a
-  targeted parser)
-- [ ] `[you]` Review scraped output for quality before Places API resolution
-- [ ] `[agent]` Implement the web-scrape staging writer and canonical merge
-  promotion path for scraped curated POIs
-- [ ] `[agent]` Wire the scraper output through the curated POI resolver and
-  canonical merge flow so it lands in the web-scrape staging table first, then
-  merges into `dim_user_poi_v2`
-- [ ] Repeat for each priority article
+**Implementation note locked on 2026-04-28**: Any app-facing curated POI
+grouping/filtering should key off the latest canonical curated `category`
+field, not source filenames or raw saved-list names.
 
-**Done when**: at least one article has been scraped, resolved, and merged into
-`dim_user_poi_v2`.
+**State as of 2026-04-28**: The upstream half of this workstream is done.
+The scraper scaffold, Eater parser, config-backed article registry, normalized
+CSV contract, and CLI entry point are all built and tested. 17 articles across
+8 publishers are registered in `config/curated_scrape_articles.yaml` with
+locked taxonomy. The downstream half — resolve adapter, staging writer, and
+canonical merge — was the remaining implementation work. The first live Eater
+article (`best-bakeries-nyc`) is now processed end to end as of 2026-04-28:
+raw HTML saved locally, normalized CSV reviewed, rows resolved through Google
+Places, staged in `stg_user_poi_web_scrape`, merged into `dim_user_poi_v2`,
+and marked `loaded` in config.
+
+### Already done
+
+- [x] `[you+agent]` Design scraper module structure, output schema, and article
+  registry (`curated_poi/web_scraping/`, `config/curated_scrape_articles.yaml`)
+- [x] `[agent]` Implement normalized CSV contract: `ScrapedArticleRow`,
+  `NormalizedScrapedRow`, `normalize_article_rows`, multi-address splitter,
+  `search_query` builder, stable `source_record_id`
+- [x] `[agent]` Implement config-backed article registry with `get_article()`,
+  `list_articles()`, and locked article taxonomy for all 17 registered articles
+- [x] `[agent]` Implement Eater parser: JSON-LD `ItemList` extraction, section-
+  text address/description extraction, multi-address row expansion
+- [x] `[agent]` Implement `export_curated_poi_eater_article` CLI: `--list-articles`,
+  `--article-slug`, `--html`, `--url`
+
+### Phase 1 — First end-to-end Eater article
+
+- [x] `[you]` Save one real Eater HTML file locally under
+  `data/raw/scraped/raw/eater/<slug>_<date>.html` and run the parser; review
+  normalized CSV for address coverage, multi-address splits, and taxonomy before
+  any resolve work begins
+- [x] `[agent]` Build web-scrape resolve adapter: reads a normalized scrape CSV,
+  maps `search_query` / `input_title` into the Places text search flow, reuses
+  the existing resolve and enrich machinery from `curated_poi/google_takeout/`
+  via a new `curated_poi/shared/` module rather than duplicating it
+- [x] `[agent]` Write `stg_user_poi_web_scrape` writer and canonical merge path
+  into `dim_user_poi_v2` following the same staged-ingest model as
+  `stg_user_poi_google_takeout`
+- [x] `[agent]` Make the export CLI generic: a new
+  `export_curated_poi_article` entry point that routes by `parser_name` from
+  the registry; keep `export_curated_poi_eater_article` as a compatibility alias
+- [x] `[you]` Run first Eater article end to end; spot-check resolved rows in
+  `dim_user_poi_v2` and advance article status to `loaded` in config
+
+### Phase 2 — Remaining Eater articles
+
+- [x] `[you]` Save HTML files for the remaining 4 Eater articles and run the
+  parser on each; review normalized CSVs before resolve
+- [x] `[you]` Run remaining Eater articles through resolve/stage/merge; advance
+  each to `loaded` in `config/curated_scrape_articles.yaml`
+
+**Phase 2 completion notes on 2026-04-29**
+- Remaining 4 Eater articles were captured, normalized, resolved, staged, and merged
+- Across 81 source rows, 10 were absorbed via canonical pre-resolve duplicate reuse before Google Text Search
+- 71 rows went to Google Text Search and 69 required new Place Details calls
+- QA-only fuzzy overlap review surfaced two accepted overlaps:
+  `Birdland` -> existing canonical `Birdland Jazz Club`
+  `Abuqir` -> existing canonical `Abuqir`
+
+### Phase 3 — Time Out parser
+
+- [x] `[agent]` Build Time Out parser (`publications/timeout.py`); Time Out
+  article structure differs from Eater so this needs its own parser class under
+  the same `ScrapedArticleRow` contract
+- [x] `[you]` Save Time Out HTML files for the 3 registered articles and run the
+  parser; review normalized CSVs
+- [x] `[you]` Run Time Out articles through resolve/stage/merge; advance each to
+  `loaded` in config
+
+**Phase 3 implementation note on 2026-04-29**
+- Added `publications/timeout.py` and registered `parser_name: timeout` in the
+  shared publication registry so the generic
+  `export_curated_poi_article` CLI can parse Time Out articles without a new
+  bespoke export path
+- Parser targets Time Out's first server-rendered `large_list` zone, extracting
+  ranked item titles, canonical item URLs, neighborhood tags, and summary text
+  into the existing normalized scrape contract used by Eater
+- Added focused parser tests plus regression coverage that the parser stops
+  after the primary editorial list and ignores later recommendation/recirc zones
+- First live Time Out pass is now complete for all registered Time Out articles:
+  thrift stores, vintage shops, live music venues, and the current
+  `100-best-new-york-restaurants` page capture
+- Live run note: the current `100-best-new-york-restaurants` HTML rendered only
+  45 ranked rows at capture time on 2026-04-29. The parser/export path treated
+  that as the complete server-rendered article payload and all 45 resolved
+  cleanly through Google Places
+
+### Phase 4 — Semi-manual sources
+
+Semi-manual articles (Wanderlog, Michelin Guide, Bon Appetit, NY Mag) use
+`capture_mode: semi_manual` and do not need a dedicated publication parser.
+
+- [x] `[agent]` Build the semi-manual normalization path: reads a saved HTML or
+  text extract, applies a lightweight generic extractor, writes the same
+  normalized CSV contract
+- [ ] `[you]` Process the 4 semi-manual articles one at a time: capture raw
+  content locally, run normalization, review CSV, run through resolve/stage/merge,
+  advance to `loaded` in config
+
+**Phase 4 implementation notes on 2026-04-29**
+- Added a separate `export_curated_poi_semi_manual_article` CLI so parser-backed
+  exports and semi-manual exports stay operationally distinct
+- Semi-manual exports are still article-registry driven and now support both
+  saved `html` and saved `text` inputs, with HTML preferred when both are available
+- Added separate HTML and text extractor classes that emit the same shared
+  `ScrapedArticleRow` contract used by Eater and Time Out normalization
+- Added sparse optional `semi_manual_hints` support in
+  `config/curated_scrape_articles.yaml` so article-specific guidance is visible
+  in config without forcing a rigid schema too early
+- Wanderlog is the first implemented semi-manual slice: current guidance prefers
+  HTML, uses extractor family `wanderlog`, infers nearby place URLs when simple,
+  and fails fast if the capture yields almost no usable candidate rows
+- Shared scrape normalization now appends `raw_neighborhood` into
+  `search_query` when address is blank so neighborhood-only semi-manual rows
+  still get stronger Google Places queries
+- First live semi-manual pass is now complete for Wanderlog:
+  raw HTML captured locally, normalized CSV trimmed from an initial noisy
+  100-row draft to the expected 50 place rows, all 50 rows resolved and
+  enriched, and the article is marked `loaded` in config
+- QA follow-up from the Wanderlog live run: `web_scrape_qa.csv` surfaced 10
+  possible canonical duplicates, mostly market-style shared addresses where the
+  source article mixes venue-level names with hall-level names. These are kept
+  as QA review signals, not auto-collapsed by the semi-manual extractor
+- Michelin Guide is now the second live semi-manual slice:
+  a lightweight `michelin` extractor family targets rendered
+  `js-restaurant__list_item` cards instead of generic page anchors, producing a
+  clean 52-row restaurant CSV from the 2026-04-29 capture
+- Michelin live-run note: an initial extraction leaked one Mustache template row
+  and the page only rendered 53 cards, so the semi-manual hints were adjusted
+  to skip template placeholders and use a realistic minimum-row threshold for
+  this source. Final run resolved all 52 curated rows with no duplicate-place
+  or missing-coordinate QA findings
+
+**Phase 4 next to-dos for Bon Appetit**
+- [x] `[agent]` Inspect the saved Bon Appetit HTML at
+  `data/raw/scraped/raw/bon-appetit/nyc100_2026-04-29.html` and identify the
+  repeated article-body structure that holds real restaurant entries
+- [x] `[agent]` Add a lightweight `bon_appetit` semi-manual extractor family in
+  `curated_poi/web_scraping/semi_manual.py` so the source no longer falls back
+  to generic page anchors
+- [x] `[agent]` Register sparse `semi_manual_hints` for Bon Appetit in
+  `config/curated_scrape_articles.yaml` with a realistic minimum-row threshold
+  based on the rendered article structure
+- [x] `[agent]` Re-run
+  `export_curated_poi_semi_manual_article` for `article_slug: nyc100` and trim
+  the current noisy 163-row generic output down to a reviewable restaurant-only
+  CSV
+- [ ] `[you]` Review the cleaned Bon Appetit normalized CSV for obvious false
+  positives, missing restaurant sections, and whether source URLs should stay as
+  direct restaurant URLs or article-local links
+- [ ] `[agent]` Run the cleaned Bon Appetit CSV through
+  `ingest_curated_poi_web_scrape`, then review summary/QA outputs and mark the
+  article `loaded` in config if the run is clean
+
+**Bon Appetit progress note on 2026-04-29**
+- The generic anchor fallback has been replaced with a purpose-built
+  `bon_appetit` extractor that reads the article's JSON-LD `articleBody`,
+  preserves rank, splits neighborhood and borough, and trims the previous
+  nav/promo noise out of the normalized output
+- Re-export on the saved `nyc100_2026-04-29.html` capture now writes exactly
+  100 normalized rows instead of the earlier noisy 163-row draft
+- Current review caveat: the normalized CSV still falls back to article-level
+  `source_url` links rather than per-venue destination URLs, so the next human
+  review should decide whether that is acceptable before the live resolve run
+
+**Phase 4 next to-dos for NY Mag**
+- [x] `[you]` Capture the NY Mag source locally under
+  `data/raw/scraped/raw/ny-mag/search-listings_<date>.html` or an equivalent
+  saved text file if the search/listing UX does not produce stable article HTML
+- [x] `[agent]` Inspect the saved NY Mag capture and decide whether it should
+  use a lightweight `ny_mag` semi-manual extractor family or whether this source
+  is better handled as `manual_seed`
+- [x] `[agent]` If NY Mag remains `semi_manual`, add sparse `semi_manual_hints`
+  in `config/curated_scrape_articles.yaml` and implement the minimum extractor
+  logic needed to isolate actual restaurant entries from search/filter chrome
+- [ ] `[agent]` Export a first normalized NY Mag CSV and compare row count and
+  quality against the article's apparent intended list size before any Places
+  resolve begins
+- [x] `[agent]` Export a first normalized NY Mag CSV and compare row count and
+  quality against the article's apparent intended list size before any Places
+  resolve begins
+- [ ] `[you]` Review the first NY Mag normalized CSV and decide whether the
+  semi-manual path is credible enough to continue or whether to pivot that
+  source to `manual_seed`
+- [x] `[agent]` If the normalized output is credible, run NY Mag through
+  `ingest_curated_poi_web_scrape`, review QA outputs, and mark the article
+  `loaded` in config only after the source-level review passes
+
+**NY Mag status note on 2026-04-29**
+- A local NY Mag capture is now saved at
+  `data/raw/scraped/raw/ny-mag/search-listings_2026-04-29.html`
+- The saved HTML exposes the same public Swiftype search backend used by the
+  live page, so NY Mag remains a credible `semi_manual` source rather than an
+  immediate `manual_seed` pivot
+- Current implementation filters the backend to `listing_type=restaurant` so
+  the first NY Mag slice stays aligned with the registry's current
+  `category=restaurants` contract; the source backend itself contains both
+  restaurants and bars
+- First live NY Mag export now writes a credible restaurant-only normalized CSV
+  at `data/raw/scraped/normalized/restaurants_ny_mag_search-listings_2026-04-29.csv`
+  with 767 rows, borough/neighborhood on every row, and direct NY Mag venue URLs
+- Pre-resolve overlap review showed 76 exact title/name matches already present
+  in `dim_user_poi_v2`, so the live resolve was reduced to the remaining 691 rows
+- Reduced NY Mag live run completed with 0 new Google Text Search calls and 89
+  new Place Details calls because all 691 reduced rows were already covered by
+  the existing text-search resolution cache
+- Final NY Mag load contributes 681 canonical curated rows with NY Mag lineage
+  in both `stg_user_poi_web_scrape` and `dim_user_poi_v2`; 10 source rows were
+  absorbed into duplicate-place merges during canonicalization
+
+**Phase 4 next to-dos for Vogue**
+- [x] `[you]` Save the two registered Vogue article captures locally under
+  `data/raw/scraped/raw/vogue/`
+- [x] `[agent]` Pivot both Vogue registry entries from `parser` to
+  `semi_manual` and register sparse `semi_manual_hints` in
+  `config/curated_scrape_articles.yaml`
+- [x] `[agent]` Add a lightweight shared `vogue` extractor family in
+  `curated_poi/web_scraping/semi_manual.py` that reads JSON-LD `articleBody`,
+  preserves direct store URLs, and expands multi-location shopping entries into
+  separate normalized rows
+- [x] `[agent]` Add regression coverage for the two Vogue article shapes in
+  `tests/test_web_scraping_semi_manual.py`
+- [x] `[agent]` Export first normalized Vogue CSVs and review row counts and
+  obvious cleanup issues before running Google Places resolve
+- [x] `[agent]` Run both Vogue CSVs through `ingest_curated_poi_web_scrape`,
+  review QA outputs, and mark both articles `loaded` in config if the results
+  are acceptable
+
+**Vogue status note on 2026-04-29**
+- Local HTML captures are now saved at
+  `data/raw/scraped/raw/vogue/best-vintage-stores-in-new-york-city_2026-04-29.html`
+  and
+  `data/raw/scraped/raw/vogue/the-best-shopping-in-nyc-according-to-vogue-staffers_2026-04-29.html`
+- The new shared `vogue` semi-manual extractor reads the articles' embedded
+  JSON-LD `articleBody` rather than brittle rendered chrome, which keeps the
+  implementation small while still preserving direct store links from page
+  anchors
+- Vogue Vintage now exports
+  `shopping_vogue_best-vintage-stores-in-new-york-city_2026-04-29.csv` with 13
+  normalized rows; 11 resolved into canonical places and 2 remained unresolved
+  because the article did not provide enough location detail
+- Vogue Shopping now exports
+  `shopping_vogue_the-best-shopping-in-nyc-according-to-vogue-staffers_2026-04-29.csv`
+  with 43 normalized rows after splitting multi-location stores; 41 resolved
+  into canonical places and 2 remained unresolved, with 3 QA rows flagged as
+  possible canonical duplicates for review
+- Current unresolved Vogue rows are concentrated in sparse-address cases:
+  `Sophie’s Vintage Bridal`, `Treasures of NYC` in both articles, `Procell
+  Vintage`, and one `Lockwood` location that did not resolve cleanly
+
+**WS6 completion note on 2026-04-29**
+- WS6 is now complete for the current curated web-scrape slate: all 5 Eater
+  articles, all 3 Time Out articles, and all 6 semi-manual articles are marked
+  `loaded` in `config/curated_scrape_articles.yaml`
+
+**Done when**: all 5 Eater articles, all 3 Time Out articles, and all 6
+semi-manual articles show `loaded` status in `config/curated_scrape_articles.yaml`
+and their rows are visible in `dim_user_poi_v2`.
 
 ---
 
@@ -346,10 +596,19 @@ Excel/CSV template that flows into `dim_user_poi_v2`.
 - [ ] `[you+agent]` Design the normalization pipeline (reads the template →
   normalizes → routes to Places API resolve step → lands in the manual-upload
   staging table before canonical merge)
+  WS7 design note: the manual-upload path must follow the same staged-
+  accumulation pattern now used by `stg_user_poi_web_scrape` after the 2026-04-29
+  fix. New manual-upload batches should merge with existing
+  `stg_user_poi_manual_upload` rows before rebuilding `dim_user_poi_v2`; they
+  must not replace prior manual-upload batches.
 - [ ] `[agent]` Implement the template reader and normalization module
 - [ ] `[agent]` Implement the manual-upload staging writer and canonical merge
   promotion path for contributor-submitted curated POIs
 - [ ] `[agent]` Document the submission workflow in `docs/poi_categories.md`
+- [ ] `[agent]` After WS7 lands, do one shared ingestion-hardening pass across
+  all curated ingestion families so Google Takeout, web scrape, manual upload,
+  and future source-specific ingests all use one common helper or pattern for
+  stage accumulation before canonical rebuild
 
 **Done when**: a filled template CSV can be processed end-to-end into
 `dim_user_poi_v2`.

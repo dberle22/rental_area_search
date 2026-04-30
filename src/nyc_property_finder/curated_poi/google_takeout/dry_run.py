@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from nyc_property_finder.curated_poi.google_takeout.cache import read_resolution_cache
+from nyc_property_finder.curated_poi.google_takeout.cache import details_cache_row_is_current, read_resolution_cache
 from nyc_property_finder.curated_poi.google_takeout.config import (
     DEFAULT_DETAILS_CACHE_PATH,
     DEFAULT_RESOLUTION_CACHE_PATH,
@@ -147,7 +147,7 @@ def iter_input_csv_paths(input_dir: str | Path) -> list[Path]:
 
 
 def read_details_cache_place_ids(path: str | Path) -> set[str]:
-    """Read Google place IDs present in the details JSONL cache."""
+    """Read Google place IDs whose details cache rows match the active shape."""
 
     path = Path(path)
     if not path.exists():
@@ -163,7 +163,7 @@ def read_details_cache_place_ids(path: str | Path) -> set[str]:
             except json.JSONDecodeError:
                 continue
             place_id = _extract_place_id(payload)
-            if place_id:
+            if place_id and details_cache_row_is_current(_coerce_details_cache_row(payload, place_id)):
                 place_ids.add(place_id)
     return place_ids
 
@@ -180,6 +180,15 @@ def _extract_place_id(payload: dict[str, Any]) -> str:
     if isinstance(nested_payload, dict):
         return _extract_place_id(nested_payload)
     return ""
+
+
+def _coerce_details_cache_row(payload: dict[str, Any], place_id: str) -> dict[str, Any]:
+    if "payload" in payload and isinstance(payload.get("payload"), dict):
+        return payload
+    return {
+        "google_place_id": place_id,
+        "payload": payload if isinstance(payload, dict) else {},
+    }
 
 
 def _unique_sorted_values(values: Any) -> list[str]:

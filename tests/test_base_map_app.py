@@ -6,12 +6,12 @@ from nyc_property_finder.app.base_map import (
     DEFAULT_PUBLIC_POI_CATEGORIES,
     TARGET_COUNTY_GEOIDS,
     add_metric_display_columns,
-    available_poi_source_lists,
+    available_poi_categories,
     available_public_poi_categories,
     build_base_map_deck,
     filter_public_poi_points_by_categories,
     filter_points_to_supported_geography,
-    filter_poi_points_by_source_lists,
+    filter_poi_points_by_categories,
     format_metric_value,
     load_poi_map_data,
     load_public_poi_map_data,
@@ -226,12 +226,13 @@ def test_build_base_map_deck_can_hide_demographic_fill(tmp_path) -> None:
     )
 
 
-def test_prepare_poi_points_supports_source_list_filtering() -> None:
+def test_prepare_poi_points_supports_category_filtering() -> None:
     poi = pd.DataFrame(
         [
             {
                 "poi_id": "poi_1",
                 "source_list_names": '["Bookstores", "Favorites"]',
+                "category": "bookstores",
                 "categories": '["bookstores"]',
                 "primary_category": "bookstores",
                 "name": "Ursula Bookshop",
@@ -242,6 +243,7 @@ def test_prepare_poi_points_supports_source_list_filtering() -> None:
             {
                 "poi_id": "poi_2",
                 "source_list_names": '["Museums"]',
+                "category": "museums",
                 "categories": '["museums"]',
                 "primary_category": "museums",
                 "name": "Brooklyn Museum",
@@ -253,9 +255,9 @@ def test_prepare_poi_points_supports_source_list_filtering() -> None:
     )
 
     points = prepare_poi_points(poi)
-    filtered = filter_poi_points_by_source_lists(points, ("Favorites",))
+    filtered = filter_poi_points_by_categories(points, ("Bookstores",))
 
-    assert available_poi_source_lists(points) == ["Bookstores", "Favorites", "Museums"]
+    assert available_poi_categories(points) == ["Bookstores", "Museums"]
     assert filtered["name"].tolist() == ["Ursula Bookshop"]
     assert "List: Bookstores, Favorites" in filtered.iloc[0]["tooltip_html"]
     assert "Type: Bookstores" in filtered.iloc[0]["tooltip_html"]
@@ -273,6 +275,7 @@ def test_build_base_map_deck_adds_poi_layer_when_enabled(tmp_path) -> None:
                 {
                     "poi_id": "poi_1",
                     "source_list_names": '["Bookstores"]',
+                    "category": "bookstores",
                     "categories": '["bookstores"]',
                     "primary_category": "bookstores",
                     "name": "Ursula Bookshop",
@@ -398,6 +401,7 @@ def test_load_poi_map_data_prefers_v2_table(tmp_path) -> None:
                 "source_system": "google_places",
                 "source_record_id": '["src_1"]',
                 "source_list_names": '["Bookstores"]',
+                "category": "bookstores",
                 "categories": '["bookstores"]',
                 "primary_category": "bookstores",
                 "name": "Ursula Bookshop",
@@ -425,8 +429,9 @@ def test_load_poi_map_data_prefers_v2_table(tmp_path) -> None:
     poi_data = load_poi_map_data(database_path)
 
     assert poi_data.source == "duckdb_v2"
-    assert poi_data.stats == {"poi_count": 1, "source_list_count": 1}
+    assert poi_data.stats == {"poi_count": 1, "source_list_count": 1, "category_count": 1}
     assert poi_data.points.iloc[0]["primary_source_list"] == "Bookstores"
+    assert poi_data.points.iloc[0]["category_display"] == "Bookstores"
 
 
 def test_load_public_poi_map_data_filters_to_ws3_categories(tmp_path) -> None:

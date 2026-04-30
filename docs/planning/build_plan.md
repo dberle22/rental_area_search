@@ -251,8 +251,10 @@ listings can be mapped.
 
 - First Google Maps saved-list inputs are custom Bookstores, Museums, and
   Restaurants lists.
-- Category assignment uses keyword rules from `config/poi_categories.yaml` for
-  MVP; manual overrides are post-MVP.
+- Category assignment uses taxonomy rules from `config/poi_categories.yaml` for
+  MVP. The canonical curated taxonomy lives under `curated_taxonomy`; the
+  legacy `keyword_taxonomy_rules` block is only for coarse fallback matching in
+  the older Google Maps export path. Manual overrides are post-MVP.
 - Nearby POI relevance uses straight-line distance for MVP. Sprint 3 should
   default to a `0.5` mile radius unless the product decision changes.
 

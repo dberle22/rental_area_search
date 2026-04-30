@@ -95,6 +95,10 @@ and promotes that staged batch into canonical `dim_user_poi_v2`. See
 `docs/poi_categories.md` for the current list of `poi_nyc/` files,
 category/subcategory rules, and status.
 
+The shared Place Details enrichment now includes rating, review count,
+business status, editorial summary, editorial summary language code, price
+level, and website URI in addition to name, address, and coordinates.
+
 Use dry-run first to inspect per-file row counts, taxonomy assignments, and
 estimated API calls without hitting Google or writing DuckDB:
 

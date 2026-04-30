@@ -88,7 +88,7 @@ What it currently does:
 - normalize category, subcategory, and level-3 descriptor taxonomy
 - estimate API work in dry-run mode
 - resolve rows to Google Place IDs
-- enrich with minimal Place Details
+- enrich with versioned shared Place Details metadata
 - build the deduplicated `dim_user_poi_v2` output
 
 Important modules:

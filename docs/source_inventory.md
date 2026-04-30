@@ -77,8 +77,10 @@ sample coverage, and open source questions.
 - First expected saved lists are custom Bookstores, Museums, and Restaurants
   lists. Final list names can be decided when this integration starts.
 - Saved list names should be preserved as `source_list_name` when available.
-- Categories are normalized with `config/poi_categories.yaml`; unknown places
-  become `other`.
+- Categories are normalized with `config/poi_categories.yaml`. The canonical
+  curated taxonomy lives under `curated_taxonomy`; the legacy
+  `keyword_taxonomy_rules` block is only a coarse matcher for older Google Maps
+  export normalization. Unknown places become `other`.
 - Category overrides are post-MVP.
 - Raw files may expose sensitive personal routines and should remain local.
 

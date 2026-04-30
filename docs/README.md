@@ -15,7 +15,8 @@ same topic, use the ownership table below to decide which one should be updated.
 | What POI categories exist, what files, what status? | `poi_categories.md` |
 | Where do raw sources, URLs, and caveats live? | `source_inventory.md` |
 | What decisions have already been made? | `decision_log.md` |
-| What should we work on next? | `planning/workstreams.md` |
+| What are we building and why? | `planning/product_strategy.md` |
+| What should we work on next? | `planning/backlog.md` |
 
 ## Canonical Ownership
 
@@ -31,7 +32,9 @@ same topic, use the ownership table below to decide which one should be updated.
 | Listing CSV input schema | `contracts/listing_csv_contract.md` |
 | Neighborhood Explorer app behavior | `app/neighborhood_explorer_app.md` |
 | Property Explorer app behavior | `app/property_explorer_app.md` |
-| Active workstreams and to-dos | `planning/workstreams.md` |
+| Product strategy, apps, and data products | `planning/product_strategy.md` |
+| Active backlog and sprint assignments | `planning/backlog.md` |
+| Historical workstreams (WS1–WS6) | `planning/workstreams.md` |
 | Historical workstream context | `planning/next_workstreams_plan.md` |
 | Future/post-MVP ideas | `planning/post_mvp_improvements.md` |
 | Historical sprint notes | `archive/sprint_artifacts/` |

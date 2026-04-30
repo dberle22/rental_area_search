@@ -323,6 +323,13 @@ Required columns:
 | `lon` | double | no | WGS84 longitude. |
 | `has_place_details` | boolean | no | True when the canonical row has fetched Google Place Details / geo enrichment available. |
 | `details_fetched_at` | timestamp | yes | Timestamp for the cached Place Details payload used to build the row. |
+| `rating` | double | yes | Google star rating from Place Details. |
+| `user_rating_count` | integer | yes | Number of Google user ratings for the place. |
+| `business_status` | string | yes | Raw Google business status enum such as `OPERATIONAL` or `CLOSED_TEMPORARILY`. |
+| `editorial_summary` | string | yes | Google-authored short place summary text when available. |
+| `editorial_summary_language_code` | string | yes | Language code paired with `editorial_summary`, for example `en`. |
+| `price_level` | string | yes | Raw Google price-level enum such as `PRICE_LEVEL_MODERATE`. |
+| `website_uri` | string | yes | Official place website URL from Google Place Details when available. |
 
 Taxonomy rule: curated source rows normalize through
 `config/poi_categories.yaml` into `category`, `subcategory`, and optional

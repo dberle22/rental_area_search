@@ -38,5 +38,6 @@ def load_config(config_dir: str | Path = DEFAULT_CONFIG_DIR) -> dict[str, Any]:
         "settings": load_yaml(config_dir / "settings.yaml"),
         "data_sources": load_yaml(data_sources_path),
         "poi_categories": load_yaml(config_dir / "poi_categories.yaml"),
+        "curated_scrape_articles": load_yaml(config_dir / "curated_scrape_articles.yaml"),
         "scoring_weights": load_yaml(config_dir / "scoring_weights.yaml"),
     }

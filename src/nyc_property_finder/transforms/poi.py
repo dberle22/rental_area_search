@@ -12,52 +12,93 @@ from urllib.parse import unquote
 import pandas as pd
 
 
-DEFAULT_CATEGORY_KEYWORDS = {
+DEFAULT_KEYWORD_TAXONOMY_RULES = {
     # Food & Drink — specific first to avoid false matches on broad terms
-    "pizza": ["pizza"],
-    "bakeries": ["bakery", "pastry", "patisserie"],
-    "sandwiches": ["sandwich"],
-    "coffee_shops": ["coffee", "cafe", "espresso"],
-    "rest_chinese": ["chinese", "dim sum", "cantonese"],
-    "rest_japanese": ["japanese", "sushi", "ramen", "izakaya"],
-    "specialty_grocery": ["speciality", "specialty", "gourmet"],
+    "pizza": {"category": "restaurants", "subcategory": "pizza", "keywords": ["pizza"]},
+    "bakeries": {
+        "category": "bakeries",
+        "subcategory": "bakeries",
+        "keywords": ["bakery", "pastry", "patisserie"],
+    },
+    "sandwiches": {"category": "restaurants", "subcategory": "sandwiches", "keywords": ["sandwich"]},
+    "coffee_shops": {
+        "category": "coffee_shops",
+        "subcategory": "coffee_shops",
+        "keywords": ["coffee", "cafe", "espresso"],
+    },
+    "chinese_cuisine": {
+        "category": "restaurants",
+        "subcategory": "chinese",
+        "keywords": ["chinese", "dim sum", "cantonese"],
+    },
+    "japanese_cuisine": {
+        "category": "restaurants",
+        "subcategory": "japanese",
+        "keywords": ["japanese", "sushi", "ramen", "izakaya"],
+    },
+    "specialty_grocery": {
+        "category": "specialty_grocery",
+        "subcategory": "specialty_grocery",
+        "keywords": ["speciality", "specialty", "gourmet"],
+    },
     # food_markets before groceries — both can match "market"
-    "food_markets": ["market", "food hall"],
-    "restaurants": ["restaurant", "diner", "food"],
-    "bars": ["bar", "brewery", "pub", "cocktail"],
+    "food_markets": {
+        "category": "food_markets",
+        "subcategory": "food_markets",
+        "keywords": ["market", "food hall"],
+    },
+    "restaurants": {"category": "restaurants", "subcategory": "restaurants", "keywords": ["restaurant", "diner", "food"]},
+    "bars": {"category": "bars", "subcategory": "bars", "keywords": ["bar", "brewery", "pub", "cocktail"]},
     # Culture & Entertainment
-    "bookstores": ["bookstore", "books"],
-    "record_stores": ["record", "vinyl"],
-    "museums": ["museum", "gallery"],
-    "movie_theaters": ["cinema", "movie", "theater"],
-    "music_venues": ["venue", "concert", "music", "jazz"],
+    "bookstores": {"category": "bookstores", "subcategory": "bookstores", "keywords": ["bookstore", "books"]},
+    "record_stores": {"category": "record_stores", "subcategory": "record_stores", "keywords": ["record", "vinyl"]},
+    "museums": {"category": "museums", "subcategory": "museums", "keywords": ["museum", "gallery"]},
+    "movie_theaters": {
+        "category": "movie_theaters",
+        "subcategory": "movie_theaters",
+        "keywords": ["cinema", "movie", "theater"],
+    },
+    "music_venues": {
+        "category": "music_venues",
+        "subcategory": "music_venues",
+        "keywords": ["venue", "concert", "music", "jazz"],
+    },
     # Everyday & Outdoor
-    "groceries": ["grocery", "supermarket"],
-    "shopping": ["shop", "store", "mall"],
-    "parks": ["park", "garden", "playground"],
+    "groceries": {"category": "groceries", "subcategory": "groceries", "keywords": ["grocery", "supermarket"]},
+    "shopping": {"category": "shopping", "subcategory": "shopping", "keywords": ["shop", "store", "mall"]},
+    "parks": {"category": "parks", "subcategory": "parks", "keywords": ["park", "garden", "playground"]},
 }
 
 
-def normalize_category(name: str, category_keywords: dict[str, list[str]] | None = None) -> str:
+def infer_taxonomy_from_text(
+    text: str,
+    keyword_taxonomy_rules: dict[str, object] | None = None,
+) -> dict[str, str]:
+    """Infer a category/subcategory pair from free text using ordered rules."""
+
+    rules = _coerce_keyword_taxonomy_rules(keyword_taxonomy_rules)
+    clean_text = str(text).lower()
+    for rule in rules.values():
+        keywords = rule.get("keywords", [])
+        if any(keyword in clean_text for keyword in keywords):
+            return {
+                "category": str(rule.get("category", "")).strip() or "other",
+                "subcategory": str(rule.get("subcategory", "")).strip(),
+            }
+    return {"category": "other", "subcategory": ""}
+
+
+def normalize_category(name: str, category_keywords: dict[str, object] | None = None) -> str:
     """Map a place name into a coarse category."""
 
-    category_keywords = category_keywords or DEFAULT_CATEGORY_KEYWORDS
-    clean_name = name.lower()
-    for category, keywords in category_keywords.items():
-        if any(keyword in clean_name for keyword in keywords):
-            return category
-    return "other"
+    return infer_taxonomy_from_text(name, category_keywords)["category"]
 
 
-def category_from_list_name(list_name: str, category_keywords: dict[str, list[str]] | None = None) -> str:
+def category_from_list_name(list_name: str, category_keywords: dict[str, object] | None = None) -> str:
     """Map a Google Maps list name into a coarse POI category."""
 
     clean_name = list_name.lower().replace("new york - ", "").replace("nyc", "")
-    category_keywords = category_keywords or DEFAULT_CATEGORY_KEYWORDS
-    for category in category_keywords:
-        if category.replace("_", " ") in clean_name:
-            return category
-    return normalize_category(clean_name, category_keywords=category_keywords)
+    return infer_taxonomy_from_text(clean_name, category_keywords)["category"]
 
 
 def parse_google_maps_csv(path: str | Path) -> pd.DataFrame:
@@ -140,7 +181,7 @@ def parse_google_maps_kml(path: str | Path) -> pd.DataFrame:
 
 def normalize_poi_dataframe(
     dataframe: pd.DataFrame,
-    category_keywords: dict[str, list[str]] | None = None,
+    category_keywords: dict[str, object] | None = None,
 ) -> pd.DataFrame:
     """Clean and categorize POI records."""
 
@@ -151,17 +192,44 @@ def normalize_poi_dataframe(
     output["lat"] = pd.to_numeric(output["lat"], errors="coerce")
     output["lon"] = pd.to_numeric(output["lon"], errors="coerce")
     output = output.dropna(subset=["lat", "lon"])
-    output["category"] = output.apply(
-        lambda row: category_from_list_name(row["source_list_name"], category_keywords)
-        if category_from_list_name(row["source_list_name"], category_keywords) != "other"
-        else normalize_category(row["name"], category_keywords),
-        axis=1,
-    )
+    def resolve_category(row: pd.Series) -> str:
+        list_match = infer_taxonomy_from_text(row["source_list_name"], category_keywords)
+        if list_match["category"] != "other":
+            return list_match["category"]
+        return infer_taxonomy_from_text(row["name"], category_keywords)["category"]
+
+    output["category"] = output.apply(resolve_category, axis=1)
     output["poi_id"] = output.apply(
         lambda row: _stable_poi_id(row["name"], row["lat"], row["lon"]),
         axis=1,
     )
     return output[["poi_id", "name", "category", "source_list_name", "lat", "lon"]]
+
+
+def _coerce_keyword_taxonomy_rules(
+    keyword_taxonomy_rules: dict[str, object] | None,
+) -> dict[str, dict[str, object]]:
+    if not keyword_taxonomy_rules:
+        return DEFAULT_KEYWORD_TAXONOMY_RULES
+
+    normalized: dict[str, dict[str, object]] = {}
+    for rule_name, raw_rule in keyword_taxonomy_rules.items():
+        if isinstance(raw_rule, dict):
+            keywords = raw_rule.get("keywords", [])
+            normalized[rule_name] = {
+                "category": str(raw_rule.get("category", "")).strip(),
+                "subcategory": str(raw_rule.get("subcategory", "")).strip(),
+                "keywords": [str(keyword).lower() for keyword in keywords if str(keyword).strip()],
+            }
+            continue
+        if isinstance(raw_rule, list):
+            # Backward compatibility for the old `categories:` config shape.
+            normalized[rule_name] = {
+                "category": str(rule_name).strip(),
+                "subcategory": str(rule_name).strip(),
+                "keywords": [str(keyword).lower() for keyword in raw_rule if str(keyword).strip()],
+            }
+    return normalized or DEFAULT_KEYWORD_TAXONOMY_RULES
 
 
 def _stable_poi_id(name: str, lat: float, lon: float) -> str:

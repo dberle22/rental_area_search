@@ -98,6 +98,13 @@ def test_user_poi_v2_schema_is_source_aware(tmp_path) -> None:
         "lon",
         "has_place_details",
         "details_fetched_at",
+        "rating",
+        "user_rating_count",
+        "business_status",
+        "editorial_summary",
+        "editorial_summary_language_code",
+        "price_level",
+        "website_uri",
     ]
 
 
