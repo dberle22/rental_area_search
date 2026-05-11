@@ -11,7 +11,7 @@ local DuckDB database.
   `data/raw/geography/tract_to_nta_equivalency.csv`
 - Subway GTFS: `data/raw/transit/gtfs_subway.zip`
 - Metro Deep Dive DuckDB:
-  `/Users/danberle/Documents/projects/data/duckdb/metro_deep_dive.duckdb`
+  `~/data/duckdb/metro_deep_dive.duckdb`
 
 ## Download Public Sources
 
@@ -41,7 +41,7 @@ from nyc_property_finder.pipelines.ingest_subway_stops import run as run_subway
 from nyc_property_finder.pipelines.build_neighborhood_features import run_metro_deep_dive
 
 db = "data/processed/nyc_property_finder.duckdb"
-metro = "/Users/danberle/Documents/projects/data/duckdb/metro_deep_dive.duckdb"
+metro = "~/data/duckdb/metro_deep_dive.duckdb"
 
 run_listings("data/raw/listings_sample.csv", db, source="streeteasy_saved")
 run_poi("data/raw/google_maps", db)
