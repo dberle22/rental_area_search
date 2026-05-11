@@ -16,7 +16,7 @@ same topic, use the ownership table below to decide which one should be updated.
 | Where do raw sources, URLs, and caveats live? | `source_inventory.md` |
 | What decisions have already been made? | `decision_log.md` |
 | What are we building and why? | `planning/product_strategy.md` |
-| What should we work on next? | `planning/backlog.md` |
+| What should we work on next? | `planning/current_backlog.md` |
 
 ## Canonical Ownership
 
@@ -30,10 +30,11 @@ same topic, use the ownership table below to decide which one should be updated.
 | Raw source URLs, local path conventions, and caveats | `source_inventory.md` |
 | Durable decisions and rationale | `decision_log.md` |
 | Listing CSV input schema | `contracts/listing_csv_contract.md` |
-| Neighborhood Explorer app behavior | `app/neighborhood_explorer_app.md` |
+| Stoop Explore app behavior | `app/neighborhood_explorer_app.md` |
+| Stoop Explore launch and refresh steps | `app/stoop_explore_launch_runbook.md` |
 | Property Explorer app behavior | `app/property_explorer_app.md` |
 | Product strategy, apps, and data products | `planning/product_strategy.md` |
-| Active backlog and sprint assignments | `planning/backlog.md` |
+| Active backlog and sprint assignments | `planning/current_backlog.md` |
 | Historical workstreams (WS1–WS6) | `planning/workstreams.md` |
 | Historical workstream context | `planning/next_workstreams_plan.md` |
 | Future/post-MVP ideas | `planning/post_mvp_improvements.md` |

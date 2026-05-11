@@ -126,6 +126,15 @@ keyword_taxonomy_rules:
       - park
       - garden
       - playground
+  # --- Services, Amenities, & Hotels ---
+  hotels:
+    category: hotels
+    subcategory: hotels
+    keywords:
+      - hotel
+      - lodging
+      - motel
+      - accomidations
 
 curated_taxonomy:
   files:

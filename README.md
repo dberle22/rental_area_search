@@ -9,8 +9,8 @@ The project has three main pieces:
 - A file-backed data platform that loads raw local sources into DuckDB.
 - Python pipelines that normalize sources, build geography/context tables, and
   score listings.
-- Two Streamlit apps: Property Explorer for listings and Neighborhood Explorer
-  for tract/neighborhood context.
+- Two Streamlit apps: Property Explorer for listings and Stoop Explore for
+  neighborhood context and curated day-out discovery.
 
 ## Documentation
 
@@ -23,7 +23,7 @@ Start with the docs index:
 - `docs/pipeline_plan.md`: operational build order and commands.
 - `docs/source_inventory.md`: raw source URLs, path conventions, and caveats.
 - `docs/app/property_explorer_app.md`: Property Explorer app behavior.
-- `docs/app/neighborhood_explorer_app.md`: Neighborhood Explorer app behavior.
+- `docs/app/neighborhood_explorer_app.md`: Stoop Explore app behavior.
 
 ## Setup
 
@@ -102,13 +102,14 @@ Run each app from the repository root in its own terminal. Use the project
 virtual environment and set `PYTHONPATH=src` so Streamlit can import the local
 `nyc_property_finder` package even before an editable install is refreshed.
 
-### Neighborhood Explorer
+### Stoop Explore
 
-Neighborhood Explorer is the geography and demographic foundation app. It reads
-tract geometry, tract-to-NTA mapping, tract features, and NTA features.
+Stoop Explore is the neighborhood discovery app. It reads tract geometry,
+tract-to-NTA mapping, tract and NTA features, curated/public POIs, and the
+precomputed `neighborhood_character_mart` outputs.
 
 ```bash
-PYTHONPATH=src .venv/bin/streamlit run app/streamlit_app_v2.py
+PYTHONPATH=src .venv/bin/streamlit run app/stoop_explore.py
 ```
 
 ### Neighborhood Data QA

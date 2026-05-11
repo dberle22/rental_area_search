@@ -29,6 +29,7 @@ NTA_FEATURE_TABLE = f"{GOLD_SCHEMA}.fct_nta_features"
 TRACT_TO_NTA_TABLE = f"{GOLD_SCHEMA}.dim_tract_to_nta"
 POI_TABLE = f"{GOLD_SCHEMA}.dim_user_poi"
 POI_V2_TABLE = f"{GOLD_SCHEMA}.dim_user_poi_v2"
+POI_V3_TABLE = f"{GOLD_SCHEMA}.dim_user_poi_v3"
 PUBLIC_POI_TABLE = f"{GOLD_SCHEMA}.dim_public_poi"
 
 BOROUGH_TO_COUNTY_GEOID = {
@@ -245,6 +246,19 @@ def format_poi_category(value: Any) -> str:
 
     text = str(value).strip()
     return text.replace("_", " ").title() if text else "Other"
+
+
+def format_poi_subcategory(value: Any) -> str:
+    """Return a readable POI subcategory label."""
+
+    text = str(value).strip()
+    if not text or text in {"__unknown__", "nan"}:
+        return ""
+    if text == "mixed_restaurants":
+        return "Mixed Restaurant Scene"
+    if text == "restaurants":
+        return "General Restaurant Scene"
+    return text.replace("_", " ").title()
 
 
 def canonical_public_poi_category(value: str) -> str:
@@ -474,11 +488,25 @@ def add_tooltip_columns(dataframe: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         return pd.to_numeric(output[column], errors="coerce").fillna(0).astype(int)
 
     shared_metric_details = (
+        "<br/>Curated places: "
+        + _count_series("curated_poi_count_total").astype(str)
+        + "<br/>Public POIs: "
+        + _count_series("public_poi_count_total").astype(str)
+        + "<br/>Subway stations: "
+        + _count_series("public_poi_count_subway_station").astype(str)
+        + "<br/>Grocery stores: "
+        + _count_series("public_poi_count_grocery_store").astype(str)
+        + "<br/>Pharmacies: "
+        + _count_series("public_poi_count_pharmacy").astype(str)
+    )
+    selected_metric_details = (
         "<br/>"
         + output["selected_metric_label"].fillna("Metric").astype(str)
         + ": "
         + output["selected_metric_display"].fillna("Unavailable").astype(str)
-        + "<br/>Median household income: "
+    )
+    context_details = (
+        "<br/>Median household income: "
         + output["median_income_display"].fillna("Unavailable").astype(str)
         + "<br/>Median gross rent: "
         + output["median_rent_display"].fillna("Unavailable").astype(str)
@@ -488,24 +516,6 @@ def add_tooltip_columns(dataframe: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         + output["pct_bachelors_plus_display"].fillna("Unavailable").astype(str)
         + "<br/>Median age: "
         + output["median_age_display"].fillna("Unavailable").astype(str)
-        + "<br/>Curated POIs: "
-        + _count_series("curated_poi_count_total").astype(str)
-        + "<br/>Public POIs: "
-        + _count_series("public_poi_count_total").astype(str)
-        + "<br/>Total POIs: "
-        + _count_series("total_poi_count").astype(str)
-        + "<br/>Subway stations: "
-        + _count_series("public_poi_count_subway_station").astype(str)
-        + "<br/>Citi Bike stations: "
-        + _count_series("public_poi_count_citi_bike_station").astype(str)
-        + "<br/>Grocery stores: "
-        + _count_series("public_poi_count_grocery_store").astype(str)
-        + "<br/>Banks: "
-        + _count_series("public_poi_count_bank").astype(str)
-        + "<br/>Gyms: "
-        + _count_series("public_poi_count_gym").astype(str)
-        + "<br/>Pharmacies: "
-        + _count_series("public_poi_count_pharmacy").astype(str)
     )
 
     output["selected_metric_tooltip"] = (
@@ -515,6 +525,7 @@ def add_tooltip_columns(dataframe: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         + output["borough"].fillna("Unavailable").astype(str)
         + "<br/>Tract: "
         + output["tract_id"].fillna("Unavailable").astype(str)
+        + selected_metric_details
         + shared_metric_details
     )
     output["neighborhood_metric_tooltip"] = (
@@ -522,9 +533,17 @@ def add_tooltip_columns(dataframe: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
         + output["nta_name"].fillna("Unavailable").astype(str)
         + "</b><br/>Borough: "
         + output["borough"].fillna("Unavailable").astype(str)
+        + selected_metric_details
         + shared_metric_details
     )
-    output["nta_summary_tooltip"] = output["neighborhood_metric_tooltip"]
+    output["nta_summary_tooltip"] = (
+        "<b>"
+        + output["nta_name"].fillna("Unavailable").astype(str)
+        + "</b><br/>Borough: "
+        + output["borough"].fillna("Unavailable").astype(str)
+        + shared_metric_details
+        + context_details
+    )
     return output
 
 
@@ -555,6 +574,10 @@ def load_feature_table(
 def load_curated_poi_count_data(database_path: str | Path) -> pd.DataFrame:
     """Load minimal curated POI columns needed for geography-level counts."""
 
+    if table_exists(database_path, POI_V3_TABLE):
+        poi = load_optional_table(database_path, POI_V3_TABLE, ["lat", "lon"])
+        if not poi.empty:
+            return poi[["lat", "lon"]].copy()
     if table_exists(database_path, POI_V2_TABLE):
         poi = load_optional_table(database_path, POI_V2_TABLE, ["lat", "lon"])
         if not poi.empty:
@@ -601,14 +624,19 @@ def load_poi_map_data(
     resolution_cache_path: str | Path = DEFAULT_RESOLUTION_CACHE_PATH,
     details_cache_path: str | Path = DEFAULT_DETAILS_CACHE_PATH,
 ) -> PoiMapData:
-    """Load app-ready POIs, preferring DuckDB v2 and falling back to caches."""
+    """Load app-ready POIs, preferring DuckDB v3/v2 and falling back to caches."""
 
     source = "unavailable"
     poi = pd.DataFrame(columns=POI_COLUMNS)
 
+    if table_exists(database_path, POI_V3_TABLE):
+        poi = load_optional_table(database_path, POI_V3_TABLE, POI_COLUMNS)
+        source = "duckdb_v3"
+
     if table_exists(database_path, POI_V2_TABLE):
-        poi = load_optional_table(database_path, POI_V2_TABLE, POI_COLUMNS)
-        source = "duckdb_v2"
+        if poi.empty:
+            poi = load_optional_table(database_path, POI_V2_TABLE, POI_COLUMNS)
+            source = "duckdb_v2"
 
     if poi.empty and table_exists(database_path, POI_TABLE):
         legacy = load_optional_table(
@@ -772,13 +800,28 @@ def prepare_poi_points(poi: pd.DataFrame) -> pd.DataFrame:
             strict=True,
         )
     ]
+    output["subcategory_display"] = output["subcategory"].apply(format_poi_subcategory)
+    output["poi_color_key"] = [
+        f"{category} | {subcategory}" if subcategory else category
+        for category, subcategory in zip(
+            output["category_display"],
+            output["subcategory_display"],
+            strict=True,
+        )
+    ]
 
-    categories = available_poi_categories(output)
+    categories = sorted(
+        {
+            value
+            for value in output["poi_color_key"].fillna("").astype(str)
+            if str(value).strip()
+        }
+    )
     color_lookup = {
         category: POI_COLOR_PALETTE[index % len(POI_COLOR_PALETTE)]
         for index, category in enumerate(categories)
     }
-    output["poi_color"] = output["category_display"].map(color_lookup).apply(
+    output["poi_color"] = output["poi_color_key"].map(color_lookup).apply(
         lambda color: color if isinstance(color, list) else [205, 83, 64, 230]
     )
     output["tooltip_html"] = (
@@ -788,9 +831,14 @@ def prepare_poi_points(poi: pd.DataFrame) -> pd.DataFrame:
         + output["source_list_display"].fillna("Unlisted POIs").astype(str)
         + "<br/>Type: "
         + output["category_display"].fillna("Other").astype(str)
-        + "<br/>"
-        + output["address"].fillna("").astype(str)
     )
+    with_subcategory = output["subcategory_display"].ne("")
+    output.loc[with_subcategory, "tooltip_html"] = (
+        output.loc[with_subcategory, "tooltip_html"]
+        + "<br/>Sub Category: "
+        + output.loc[with_subcategory, "subcategory_display"]
+    )
+    output["tooltip_html"] = output["tooltip_html"] + "<br/>" + output["address"].fillna("").astype(str)
     return output
 
 
@@ -820,9 +868,42 @@ def available_poi_categories(poi: pd.DataFrame) -> list[str]:
     return sorted(values)
 
 
+def available_poi_subcategories(poi: pd.DataFrame) -> list[str]:
+    """Return sorted curated subcategory labels available in a POI dataframe."""
+
+    if poi.empty or "subcategory_display" not in poi.columns:
+        return []
+
+    values = {
+        str(value).strip()
+        for value in poi["subcategory_display"].fillna("").astype(str)
+        if str(value).strip()
+    }
+    return sorted(values)
+
+
+def poi_color_legend_rows(poi: pd.DataFrame) -> pd.DataFrame:
+    """Return unique legend rows for visible curated POI colors."""
+
+    if poi.empty:
+        return pd.DataFrame(columns=["Category", "Sub Category", "Color"])
+
+    legend = poi[["category_display", "subcategory_display", "poi_color_key", "poi_color"]].copy()
+    legend["Category"] = legend["category_display"].fillna("").astype(str)
+    legend["Sub Category"] = legend["subcategory_display"].fillna("").astype(str)
+    legend["Color"] = legend["poi_color"].apply(
+        lambda rgba: "#{:02x}{:02x}{:02x}".format(*rgba[:3]) if isinstance(rgba, list) and len(rgba) >= 3 else ""
+    )
+    legend = legend.drop_duplicates(subset=["Category", "Sub Category", "poi_color_key", "Color"])
+    return legend.sort_values(["Category", "Sub Category", "poi_color_key"]).reset_index(drop=True)[
+        ["Category", "Sub Category", "Color"]
+    ]
+
+
 def filter_poi_points_by_categories(
     poi: pd.DataFrame,
     selected_categories: tuple[str, ...],
+    selected_subcategories: tuple[str, ...] = (),
 ) -> pd.DataFrame:
     """Filter POIs to any selected curated category."""
 
@@ -831,7 +912,13 @@ def filter_poi_points_by_categories(
 
     selected = {format_poi_category(value) for value in selected_categories if str(value).strip()}
     mask = poi["category_display"].apply(lambda value: format_poi_category(value) in selected)
-    return poi.loc[mask].copy()
+    output = poi.loc[mask].copy()
+    if selected_subcategories:
+        selected_subcategory_set = {str(value).strip() for value in selected_subcategories if str(value).strip()}
+        output = output.loc[
+            output["subcategory_display"].fillna("").astype(str).isin(selected_subcategory_set)
+        ].copy()
+    return output
 
 
 def prepare_public_poi_points(poi: pd.DataFrame) -> pd.DataFrame:
@@ -1215,6 +1302,7 @@ def build_base_map_deck(
     show_pois: bool = False,
     public_poi_points: pd.DataFrame | None = None,
     show_public_pois: bool = False,
+    selected_nta_id: str | None = None,
     center_lat: float = 40.7128,
     center_lon: float = -74.0060,
     zoom: int = 10,
@@ -1262,23 +1350,7 @@ def build_base_map_deck(
                 highlight_color=[0, 0, 0, 28],
             )
         )
-    if show_neighborhoods:
-        layers.append(
-            pdk.Layer(
-                "PolygonLayer",
-                id="tract-boundaries",
-                data=_polygon_records(map_data.tracts, "selected_metric_tooltip"),
-                get_polygon="polygon",
-                stroked=True,
-                filled=False,
-                get_line_color=[22, 28, 32, 90],
-                get_line_width=12,
-                line_width_min_pixels=1,
-                pickable=False,
-                auto_highlight=False,
-            )
-        )
-    else:
+    if not show_neighborhoods:
         layers.append(
             pdk.Layer(
                 "PolygonLayer",
@@ -1296,6 +1368,28 @@ def build_base_map_deck(
                 highlight_color=[0, 0, 0, 28],
             )
         )
+
+    if selected_nta_id:
+        selected_neighborhoods = map_data.neighborhoods.loc[
+            map_data.neighborhoods["nta_id"].fillna("").astype(str) == str(selected_nta_id)
+        ].copy()
+        if not selected_neighborhoods.empty:
+            layers.append(
+                pdk.Layer(
+                    "PolygonLayer",
+                    id="selected-nta-highlight",
+                    data=_polygon_records(selected_neighborhoods, "nta_summary_tooltip"),
+                    get_polygon="polygon",
+                    stroked=True,
+                    filled=True,
+                    get_line_color=[201, 87, 52, 255],
+                    get_line_width=70,
+                    line_width_min_pixels=3,
+                    get_fill_color=[201, 87, 52, 24],
+                    pickable=True,
+                    auto_highlight=False,
+                )
+            )
 
     if show_pois and poi_points is not None and not poi_points.empty:
         layers.append(

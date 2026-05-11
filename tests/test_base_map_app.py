@@ -7,6 +7,7 @@ from nyc_property_finder.app.base_map import (
     TARGET_COUNTY_GEOIDS,
     add_metric_display_columns,
     available_poi_categories,
+    available_poi_subcategories,
     available_public_poi_categories,
     build_base_map_deck,
     filter_public_poi_points_by_categories,
@@ -15,6 +16,7 @@ from nyc_property_finder.app.base_map import (
     format_metric_value,
     load_poi_map_data,
     load_public_poi_map_data,
+    poi_color_legend_rows,
     prepare_public_poi_points,
     prepare_poi_points,
     prepare_base_map_data,
@@ -200,7 +202,7 @@ def test_build_base_map_deck_can_hide_demographic_fill(tmp_path) -> None:
     with_demographics = build_base_map_deck(map_data, layer_mode="Tracts", show_demographics=True)
     without_demographics = build_base_map_deck(
         map_data,
-        layer_mode="Tracts",
+        layer_mode="Neighborhoods",
         show_demographics=False,
     )
 
@@ -208,7 +210,9 @@ def test_build_base_map_deck_can_hide_demographic_fill(tmp_path) -> None:
         "demographic-fill",
         "nta-boundaries",
     ]
-    assert [layer.id for layer in without_demographics.layers] == ["nta-boundaries"]
+    assert [layer.id for layer in without_demographics.layers] == [
+        "neighborhood-boundaries",
+    ]
     assert with_demographics.layers[-1].pickable is False
     assert with_demographics.layers[-1].filled is False
     assert without_demographics.layers[0].pickable is True
@@ -224,6 +228,23 @@ def test_build_base_map_deck_can_hide_demographic_fill(tmp_path) -> None:
     assert "Median household income: $100,000" in (
         with_demographics.layers[0].data[0]["selected_metric_tooltip"]
     )
+
+
+def test_build_base_map_deck_can_highlight_selected_neighborhood(tmp_path) -> None:
+    database_path = tmp_path / "app.duckdb"
+    tract_path = tmp_path / "tracts.geojson"
+    _write_tract_fixture(tract_path)
+    _write_gold_fixtures(database_path)
+    map_data = prepare_base_map_data(database_path, tract_path, metric="median_income")
+
+    deck = build_base_map_deck(
+        map_data,
+        layer_mode="Neighborhoods",
+        show_demographics=True,
+        selected_nta_id="BK0101",
+    )
+
+    assert "selected-nta-highlight" in [layer.id for layer in deck.layers]
 
 
 def test_prepare_poi_points_supports_category_filtering() -> None:
@@ -259,8 +280,50 @@ def test_prepare_poi_points_supports_category_filtering() -> None:
 
     assert available_poi_categories(points) == ["Bookstores", "Museums"]
     assert filtered["name"].tolist() == ["Ursula Bookshop"]
-    assert "List: Bookstores, Favorites" in filtered.iloc[0]["tooltip_html"]
-    assert "Type: Bookstores" in filtered.iloc[0]["tooltip_html"]
+
+
+def test_prepare_poi_points_supports_subcategory_filtering_and_legend() -> None:
+    poi = pd.DataFrame(
+        [
+            {
+                "poi_id": "poi_1",
+                "source_list_names": '["Restaurants"]',
+                "category": "restaurants",
+                "subcategory": "pizza",
+                "categories": '["restaurants"]',
+                "primary_category": "restaurants",
+                "primary_subcategory": "pizza",
+                "name": "L'industrie Pizzeria",
+                "address": "254 S 2nd St, Brooklyn, NY",
+                "lat": 40.714,
+                "lon": -73.959,
+            },
+            {
+                "poi_id": "poi_2",
+                "source_list_names": '["Restaurants"]',
+                "category": "restaurants",
+                "subcategory": "italian",
+                "categories": '["restaurants"]',
+                "primary_category": "restaurants",
+                "primary_subcategory": "italian",
+                "name": "Lilia",
+                "address": "567 Union Ave, Brooklyn, NY",
+                "lat": 40.717,
+                "lon": -73.951,
+            },
+        ]
+    )
+
+    points = prepare_poi_points(poi)
+    filtered = filter_poi_points_by_categories(points, ("Restaurants",), ("Pizza",))
+    legend = poi_color_legend_rows(points)
+
+    assert available_poi_subcategories(points) == ["Italian", "Pizza"]
+    assert filtered["name"].tolist() == ["L'industrie Pizzeria"]
+    assert "Sub Category: Pizza" in points.iloc[0]["tooltip_html"]
+    assert set(legend["Sub Category"].tolist()) == {"Italian", "Pizza"}
+    assert "List: Restaurants" in filtered.iloc[0]["tooltip_html"]
+    assert "Type: Restaurants" in filtered.iloc[0]["tooltip_html"]
 
 
 def test_build_base_map_deck_adds_poi_layer_when_enabled(tmp_path) -> None:

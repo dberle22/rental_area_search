@@ -1,9 +1,9 @@
 # Architecture
 
-Neighborhood Explorer is a local NYC property research tool. It combines
-demographic neighborhood context, baseline public amenity data, personal
-curated places, and property listings into a single DuckDB database that powers
-two Streamlit apps.
+Stoop Explore is the active neighborhood discovery surface in this local NYC
+property and place research tool. It combines demographic neighborhood
+context, baseline public amenity data, curated places, and property listings
+into a single DuckDB database that powers two Streamlit apps.
 
 The system has three layers: a **Data Platform** (what data we have and where
 it lives), **Pipelines** (how raw sources become app-ready tables), and
@@ -306,28 +306,29 @@ Output: `fct_property_context`
 
 ## Frontend Applications
 
-### Neighborhood Explorer V2 — main focus
+### Stoop Explore — main focus
 
-Interactive map for browsing NYC tracts and neighborhoods. Combines demographic
-overlays, POI layers, and eventually listing context.
+Interactive map for browsing NYC neighborhoods through curated place signals,
+ranking intelligence, and supporting demographic context.
 
 | | |
 | --- | --- |
-| Entry point | `app/streamlit_app_v2.py` |
+| Entry point | `app/stoop_explore.py` |
 | Core logic | `src/nyc_property_finder/app/base_map.py` |
-| Data consumed | `fct_tract_features`, `fct_nta_features`, `dim_user_poi_v2`, `dim_public_poi` |
+| Data consumed | `fct_tract_features`, `fct_nta_features`, `dim_user_poi_v2`, `dim_public_poi`, `neighborhood_character_mart.nta_category_controls`, `neighborhood_character_mart.nta_category_density`, `neighborhood_character_mart.nta_character_profile` |
 | Review | `docs/neighborhood_explorer_app_review.md` |
 
 Current capabilities: tract and NTA geography across all five boroughs,
-selectable demographic metrics, POI overlays filterable by source type and
-category, neighborhood-first defaults, richer polygon tooltips, and
-missing-data handling. Public POIs are kept off on first load and lazy-loaded
-when the toggle is enabled so the initial map draw stays focused on curated
-places.
+selectable context metrics, curated and public POI overlays, an above-the-map
+Explore intelligence panel, configuration-backed category visibility,
+selected-neighborhood highlight behavior, and explicit missing-data handling.
+Public POIs are kept off on first load and lazy-loaded when the toggle is
+enabled so the initial map draw stays focused on curated places.
 
 Current coverage is all five boroughs. The default app state is neighborhood
-geography, curated POIs on, public POIs off, and `subway_station` as the
-initial public overlay category once enabled.
+geography, curated POIs on, public POIs off, `restaurants` as the first Explore
+category, and `subway_station` as the initial public overlay category once
+enabled.
 
 Recent performance refactor: the expensive tract/NTA geometry assembly is now
 cached separately from metric-specific formatting, so metric switches are fast

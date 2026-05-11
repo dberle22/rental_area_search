@@ -244,3 +244,68 @@ articles:
     capture_mode: manual_seed
     parser_name: ""
     status: planned
+
+  - publisher: Time Out
+    article_slug: 35-best-hotels-nyc-2026
+    article_title: The 35 best hotels in New York City for 2026
+    article_url: https://www.timeout.com/newyork/hotels/best-hotels-in-nyc
+    source_list_name: Time out NYC - Best Hotels
+    category: hotels
+    subcategory: hotels
+    detail_level_3: ""
+    capture_mode: parser
+    parser_name: timeout
+    status: loaded
+
+  - publisher: Vogue
+    article_slug: best-hotels-nyc-vogue
+    article_title: The Best Hotels in New York City, From Five-Star to Boutique
+    article_url: https://www.vogue.com/article/the-best-hotels-in-new-york-city-from-five-star-to-boutique
+    source_list_name: Vogue - Best Hotels
+    category: hotels
+    subcategory: hotels
+    detail_level_3: ""
+    capture_mode: semi_manual
+    parser_name: ""
+    status: loaded
+    semi_manual_hints:
+      preferred_input: html
+      extractor_family: vogue
+      infer_item_urls: true
+      min_candidate_rows: 10
+
+  - publisher: Time Out
+    article_slug: coolest-hotels-nyc-2026
+    article_title: The 15 coolest hotels in New York City for 2026
+    article_url: https://www.timeout.com/newyork/hotels/coolest-new-york-city-hotels-to-stay-in-before-you-die
+    source_list_name: Time Out - Coolest Hotels
+    category: hotels
+    subcategory: hotels
+    detail_level_3: ""
+    capture_mode: parser
+    parser_name: timeout
+    status: loaded
+
+  - publisher: Time Out
+    article_slug: cheap-hotels-nyc-2026
+    article_title: The 10 best cheap hotels in New York City for 2026
+    article_url: https://www.timeout.com/newyork/hotels/best-cheap-hotels-in-nyc
+    source_list_name: Time Out - Best Cheap Hotels
+    category: hotels
+    subcategory: budget_hotels
+    detail_level_3: ""
+    capture_mode: parser
+    parser_name: timeout
+    status: loaded
+
+  - publisher: Time Out
+    article_slug: hotels-with-views-nyc-2026
+    article_title: The 15 best hotels in New York City with a view
+    article_url: https://www.timeout.com/newyork/hotels/best-hotels-with-breathtaking-views-in-nyc
+    source_list_name: Time Out - Best Hotels with Views
+    category: hotels
+    subcategory: budget_hotels
+    detail_level_3: ""
+    capture_mode: parser
+    parser_name: timeout
+    status: loaded

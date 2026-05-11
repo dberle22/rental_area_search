@@ -75,6 +75,7 @@ CATEGORY_SLUGS = {
     "laundromat",
     "dry_cleaner",
     "gym",
+    "hotel",
     "bank",
     "atm",
     "hardware_store",

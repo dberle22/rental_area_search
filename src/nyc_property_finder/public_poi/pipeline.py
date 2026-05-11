@@ -109,6 +109,7 @@ def run(
     post_office_snapshot = osm.fetch_snapshot("post_offices", snapshot_dirs["osm"])
     urgent_care_snapshot = osm.fetch_snapshot("urgent_care", snapshot_dirs["osm"])
     gym_snapshot = osm.fetch_snapshot("gyms", snapshot_dirs["osm"])
+    hotel_snapshot = osm.fetch_snapshot("hotels", snapshot_dirs["osm"])
 
     frames = [
         mta_subway.load(),
@@ -139,6 +140,7 @@ def run(
         osm.load(post_office_snapshot, "post_offices"),
         osm.load(urgent_care_snapshot, "urgent_care"),
         osm.load(gym_snapshot, "gyms"),
+        osm.load(hotel_snapshot, "hotels"),
     ]
     dim_public_poi = build_dim_public_poi(frames)
 

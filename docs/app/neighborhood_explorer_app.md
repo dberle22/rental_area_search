@@ -1,10 +1,11 @@
-# Neighborhood Explorer App
+# Stoop Explore App
 
 ## Summary
 
-`app/streamlit_app_v2.py` is the Neighborhood Explorer Streamlit entry point.
-It keeps the existing `app/streamlit_app.py` Property Explorer intact and starts
-from the shared geography and demographic foundation:
+`app/stoop_explore.py` is the durable Streamlit entry point for Stoop Explore.
+It currently delegates to `app/streamlit_app_v2.py` during the transition, keeps
+`app/streamlit_app.py` Property Explorer intact, and builds on the shared
+geography and demographic foundation:
 
 - NYC five-borough census tracts from `data/raw/geography/census_tracts.geojson`.
 - Tract-to-neighborhood labels from
@@ -13,18 +14,21 @@ from the shared geography and demographic foundation:
   `property_explorer_gold.fct_tract_features`.
 - Neighborhood demographic metrics from
   `property_explorer_gold.fct_nta_features`.
+- Explore intelligence controls and rankings from
+  `neighborhood_character_mart.nta_category_controls`,
+  `neighborhood_character_mart.nta_category_density`, and
+  `neighborhood_character_mart.nta_character_profile`.
 
-The first product surface is a base map that can switch between tract and
-neighborhood geography, color either layer by the selected demographic metric,
-or hide the demographic colors while retaining NTA boundary hover. The current
-default experience starts in neighborhood mode with curated POIs enabled,
-public POIs disabled, and `subway_station` as the default public category when
-the public layer is turned on.
+The current product surface is a neighborhood-first explorer with a right-side
+intelligence panel above the map. Users choose an Explore category such as
+restaurants or hotels, see the current "Top neighborhoods for X" ranking,
+select a neighborhood, and then review what that neighborhood is known for
+before dropping into the full-width map.
 
 ## Run
 
 ```bash
-PYTHONPATH=src .venv/bin/streamlit run app/streamlit_app_v2.py
+PYTHONPATH=src .venv/bin/streamlit run app/stoop_explore.py
 ```
 
 For table readiness, metric coverage, POI inventory QA, and source/freshness
@@ -36,18 +40,27 @@ PYTHONPATH=src .venv/bin/streamlit run app/neighborhood_qa_app.py
 
 ## Code
 
-- `app/streamlit_app_v2.py`: Streamlit controls, map rendering, and tabular
-  demographic review.
+- `app/stoop_explore.py`: durable Stoop Explore entry point for local and cloud
+  launch.
+- `app/streamlit_app_v2.py`: active Stoop Explore layout, map rendering, and
+  intelligence panel composition.
 - `app/neighborhood_qa_app.py`: QA surface for table readiness, demographic and
   POI coverage, and configured source/freshness status.
+- `src/nyc_property_finder/app/stoop_explore.py`: lightweight app-side mart
+  readers for Explore categories, rankings, and neighborhood character
+  profiles.
 - `src/nyc_property_finder/app/base_map.py`: reusable data-loading,
   tract/NTA geometry assembly, demographic formatting, color ramp generation,
-  PyDeck layer creation, POI count enrichment, and cached geography loading.
+  PyDeck layer creation, POI count enrichment, selected-neighborhood highlight,
+  and cached geography loading.
 - `src/nyc_property_finder/app/neighborhood_qa.py`: reusable QA summaries for
   source paths, DuckDB tables, demographic coverage, POI inventories, and
   freshness signals.
 - `tests/test_base_map_app.py`: regression tests for metric formatting,
-  missing-value colors, target borough filtering, and metric joins.
+  missing-value colors, target borough filtering, metric joins, and selected
+  NTA highlighting.
+- `tests/test_stoop_explore.py`: regression tests for Explore category controls,
+  rankings, and profile parsing.
 - `tests/test_neighborhood_qa.py`: regression tests for QA table summaries,
   metric coverage, POI inventory coverage, and configured source status.
 
@@ -69,10 +82,15 @@ includes `borough` and `tract_count` alongside the demographic metrics.
 ## Current UX
 
 - Default geography is `Neighborhoods`
+- Default Explore category is `Restaurants`
+- The Explore intelligence panel sits above the map on the right side
 - Curated POIs are on by default
+- Curated POIs can auto-focus on the selected Explore category
 - Public POIs are off by default and lazy-loaded only when toggled on
 - Public POI selection starts at `subway_station`
-- The table beneath the map shows the core demographic metrics together and
+- The selected neighborhood is highlighted on the map when chosen from the
+  intelligence panel
+- The table beneath the map shows the core context metrics together and
   sorts by the selected metric
 - Polygon tooltips include demographic context plus curated/public POI counts
   for quick neighborhood or tract review
@@ -92,13 +110,14 @@ and browser-side map draw cost than by repeated backend data assembly.
 
 ## QA Surface
 
-The explorer handles null demographic metrics explicitly so the map can still
-render boundaries without precise-looking demographic color. The dedicated QA
-app is where missing data should be reviewed. If the local DuckDB has boundary
-tables but metric columns are empty, the QA app will show metric coverage as
-`0.0%`. Rebuild
-`property_explorer_gold.fct_tract_features` and
-`property_explorer_gold.fct_nta_features` from the configured Metro Deep Dive
-source to populate the demographic color ramp. The QA surface also reports POI
-coverage against the full configured curated and public category inventories so
-missing categories remain visible instead of silently dropping from the summary.
+The app handles null demographic metrics explicitly so the map can still render
+boundaries without precise-looking demographic color. It also handles sparse
+Explore categories explicitly: no fake "known for" label appears when the mart
+does not support that claim, and no empty ranking is shown as if it were a real
+leaderboard. The dedicated QA app is where missing data should be reviewed. If
+the local DuckDB has boundary tables but metric columns are empty, the QA app
+will show metric coverage as `0.0%`. Rebuild
+`property_explorer_gold.fct_tract_features`,
+`property_explorer_gold.fct_nta_features`, and
+`neighborhood_character_mart` from the configured sources to refresh the full
+surface.
