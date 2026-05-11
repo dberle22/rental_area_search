@@ -15,6 +15,7 @@ dependencies = [
     "pyyaml>=6.0",
     "shapely>=2.0",
     "streamlit>=1.33",
+    "streamlit-analytics2>=0.5",
     "pydeck>=0.8",
 ]
 

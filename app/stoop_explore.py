@@ -11,8 +11,10 @@ SRC_ROOT = PROJECT_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
+import streamlit_analytics2 as streamlit_analytics
 from streamlit_app_v2 import main
 
 
 if __name__ == "__main__":
-    main()
+    with streamlit_analytics.track():
+        main()
