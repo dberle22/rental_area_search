@@ -481,7 +481,7 @@ def _extract_vogue_article_rows(html: str, article_url: str, infer_item_urls: bo
                     item_url=item_urls.get(_canonical_name_key(item_name), ""),
                     raw_address=raw_address,
                     raw_description=raw_description,
-                    raw_neighborhood="",
+                    raw_neighborhood=entry.get("raw_neighborhood", ""),
                     raw_borough=borough,
                 )
             )
@@ -576,25 +576,32 @@ def _extract_vogue_entries(body_text: str, item_urls: dict[str, str]) -> list[di
     entries: list[dict[str, Any]] = []
     current_name = ""
     current_rank: int | None = None
+    current_neighborhood = ""
     current_lines: list[str] = []
     have_started = False
 
-    for raw_line in str(body_text).splitlines():
-        line = _clean_text(raw_line)
+    lines = [_clean_text(raw_line) for raw_line in str(body_text).splitlines()]
+    for index, line in enumerate(lines):
         if not line:
             continue
-        matched_name, matched_rank = _match_vogue_entry_name(line, item_urls)
+        matched_name, matched_rank, matched_neighborhood = _match_vogue_entry_name(
+            line,
+            item_urls,
+            lookahead_lines=lines[index + 1 : index + 4],
+        )
         if matched_name:
             if current_name:
                 entries.append(
                     _build_vogue_entry(
                         item_name=current_name,
                         item_rank=current_rank,
+                        raw_neighborhood=current_neighborhood,
                         body_lines=current_lines,
                     )
                 )
             current_name = matched_name
             current_rank = matched_rank
+            current_neighborhood = matched_neighborhood
             current_lines = []
             have_started = True
             continue
@@ -606,31 +613,60 @@ def _extract_vogue_entries(body_text: str, item_urls: dict[str, str]) -> list[di
             _build_vogue_entry(
                 item_name=current_name,
                 item_rank=current_rank,
+                raw_neighborhood=current_neighborhood,
                 body_lines=current_lines,
             )
         )
     return entries
 
 
-def _match_vogue_entry_name(line: str, item_urls: dict[str, str]) -> tuple[str, int | None]:
+def _match_vogue_entry_name(
+    line: str,
+    item_urls: dict[str, str],
+    lookahead_lines: list[str] | None = None,
+) -> tuple[str, int | None, str]:
     ranked_match = RANKED_LINE_PATTERN.match(line)
     if ranked_match:
         candidate_name = _clean_text(ranked_match.group(2))
-        item_name = _resolve_vogue_item_name(candidate_name, item_urls)
+        item_name, raw_neighborhood = _resolve_vogue_item_name(
+            candidate_name,
+            item_urls,
+            lookahead_lines=lookahead_lines,
+        )
         if item_name:
-            return item_name, int(ranked_match.group(1))
-    item_name = _resolve_vogue_item_name(line, item_urls)
-    return item_name, None
+            return item_name, int(ranked_match.group(1)), raw_neighborhood
+    item_name, raw_neighborhood = _resolve_vogue_item_name(
+        line,
+        item_urls,
+        lookahead_lines=lookahead_lines,
+    )
+    return item_name, None, raw_neighborhood
 
 
-def _resolve_vogue_item_name(value: str, item_urls: dict[str, str]) -> str:
+def _resolve_vogue_item_name(
+    value: str,
+    item_urls: dict[str, str],
+    lookahead_lines: list[str] | None = None,
+) -> tuple[str, str]:
     key = _canonical_name_key(value)
     if key in item_urls:
-        return _clean_text(value)
-    return ""
+        return _clean_text(value), ""
+    parsed_name, raw_neighborhood = _parse_vogue_header_line(value)
+    if not parsed_name:
+        return "", ""
+    lookahead = [_clean_text(line) for line in (lookahead_lines or []) if _clean_text(line)]
+    if any(line.lower().startswith("amenities:") or line.lower().startswith("address:") for line in lookahead):
+        return parsed_name, raw_neighborhood
+    return "", ""
 
 
-def _build_vogue_entry(*, item_name: str, item_rank: int | None, body_lines: list[str]) -> dict[str, Any]:
+def _build_vogue_entry(
+    *,
+    item_name: str,
+    item_rank: int | None,
+    raw_neighborhood: str,
+    body_lines: list[str],
+) -> dict[str, Any]:
     address_lines: list[str] = []
     description_lines: list[str] = []
 
@@ -655,9 +691,29 @@ def _build_vogue_entry(*, item_name: str, item_rank: int | None, body_lines: lis
     return {
         "item_name": item_name,
         "item_rank": item_rank,
+        "raw_neighborhood": raw_neighborhood,
         "addresses": address_lines,
         "description_lines": description_lines,
     }
+
+
+def _parse_vogue_header_line(value: str) -> tuple[str, str]:
+    text = _clean_text(value)
+    if not text or "," not in text:
+        return "", ""
+    lowered = text.casefold()
+    if lowered.startswith("amenities:") or lowered.startswith("address:"):
+        return "", ""
+    item_name, raw_neighborhood = text.rsplit(",", 1)
+    item_name = _clean_text(item_name)
+    raw_neighborhood = _clean_text(raw_neighborhood)
+    if not item_name or not raw_neighborhood:
+        return "", ""
+    if len(raw_neighborhood.split()) > 4:
+        return "", ""
+    if raw_neighborhood.lower().startswith("new york"):
+        return "", ""
+    return item_name, raw_neighborhood
 
 
 def _looks_like_vogue_address_line(value: str) -> bool:

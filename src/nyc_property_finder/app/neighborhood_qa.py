@@ -13,6 +13,7 @@ from nyc_property_finder.app.base_map import (
     DEFAULT_PUBLIC_POI_CATEGORIES,
     DEMOGRAPHIC_METRICS,
     NTA_FEATURE_TABLE,
+    POI_V3_TABLE,
     POI_V2_TABLE,
     PUBLIC_POI_TABLE,
     TRACT_FEATURE_TABLE,
@@ -34,7 +35,8 @@ QA_TABLES = {
     "Tract to NTA mapping": TRACT_TO_NTA_TABLE,
     "Tract features": TRACT_FEATURE_TABLE,
     "NTA features": NTA_FEATURE_TABLE,
-    "Curated POI canonical": POI_V2_TABLE,
+    "Curated POI canonical": POI_V3_TABLE,
+    "Curated POI canonical v2": POI_V2_TABLE,
     "Curated POI stage (Google Takeout)": "property_explorer_gold.stg_user_poi_google_takeout",
     "Curated POI stage (Web scrape)": "property_explorer_gold.stg_user_poi_web_scrape",
     "Curated POI stage (Manual upload)": "property_explorer_gold.stg_user_poi_manual_upload",
@@ -211,8 +213,10 @@ def build_curated_poi_coverage(database_path: str | Path) -> pd.DataFrame:
     total_rows = 0
     rows_without_place_details = 0
 
-    if table_exists(database_path, POI_V2_TABLE):
-        available_columns = table_columns(database_path, POI_V2_TABLE)
+    canonical_table = POI_V3_TABLE if table_exists(database_path, POI_V3_TABLE) else POI_V2_TABLE
+
+    if table_exists(database_path, canonical_table):
+        available_columns = table_columns(database_path, canonical_table)
         category_expr = "NULLIF(TRIM(category), '')"
         if "primary_category" in available_columns:
             category_expr = f"COALESCE(NULLIF(TRIM(primary_category), ''), {category_expr})"
@@ -237,20 +241,20 @@ def build_curated_poi_coverage(database_path: str | Path) -> pd.DataFrame:
                     COALESCE({category_expr}, 'other') AS category,
                     COALESCE({subcategory_fallback_expr}, 'other') AS subcategory,
                     COUNT(*) AS rows
-                FROM {POI_V2_TABLE}
+                FROM {canonical_table}
                 GROUP BY 1, 2
                 """
             )
             total_rows = int(
                 duckdb_service.query_df(
-                    f"SELECT COUNT(*) AS rows FROM {POI_V2_TABLE}"
+                    f"SELECT COUNT(*) AS rows FROM {canonical_table}"
                 )["rows"].iloc[0]
             )
             unresolved_rows = int(
                 duckdb_service.query_df(
                     f"""
                     SELECT COUNT(*) AS rows
-                    FROM {POI_V2_TABLE}
+                    FROM {canonical_table}
                     WHERE COALESCE(TRIM(category), '') IN ('', 'other')
                     """
                 )["rows"].iloc[0]
@@ -261,7 +265,7 @@ def build_curated_poi_coverage(database_path: str | Path) -> pd.DataFrame:
                     SELECT COUNT(*) AS duplicate_place_ids
                     FROM (
                         SELECT google_place_id
-                        FROM {POI_V2_TABLE}
+                        FROM {canonical_table}
                         WHERE COALESCE(TRIM(google_place_id), '') <> ''
                         GROUP BY google_place_id
                         HAVING COUNT(*) > 1
@@ -274,7 +278,7 @@ def build_curated_poi_coverage(database_path: str | Path) -> pd.DataFrame:
                     duckdb_service.query_df(
                         f"""
                         SELECT COUNT(*) AS rows
-                        FROM {POI_V2_TABLE}
+                        FROM {canonical_table}
                         WHERE COALESCE(has_place_details, FALSE) = FALSE
                         """
                     )["rows"].iloc[0]

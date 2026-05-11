@@ -70,6 +70,12 @@ OSM_EXPORTS = {
         "tag_key": "leisure",
         "tag_value": "fitness_centre",
     },
+    "hotels": {
+        "filename": "nyc_hotels",
+        "category": "hotel",
+        "tag_key": "tourism",
+        "tag_value": "hotel",
+    },
 }
 
 URGENT_CARE_INCLUDE_PATTERN = re.compile(
@@ -322,6 +328,7 @@ def _feature_attributes(properties: dict[str, Any]) -> str:
             "osm_id",
             "osm_type",
             "shop",
+            "tourism",
             "website",
         }
     }

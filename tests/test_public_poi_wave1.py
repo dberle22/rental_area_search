@@ -379,6 +379,43 @@ def test_osm_load_parses_geojson_features(tmp_path) -> None:
     assert json.loads(row["attributes"])["amenity"] == "pharmacy"
 
 
+def test_osm_hotel_load_parses_geojson_features(tmp_path) -> None:
+    snapshot = tmp_path / "hotels.geojson"
+    snapshot.write_text(
+        json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "geometry": {"type": "Point", "coordinates": [-73.9855, 40.758]},
+                        "properties": {
+                            "osm_id": "node/99",
+                            "tag_value": "hotel",
+                            "name": "Hotel Example",
+                            "tourism": "hotel",
+                            "addr:housenumber": "123",
+                            "addr:street": "Broadway",
+                            "addr:city": "New York",
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    rows = osm.load(snapshot, "hotels")
+
+    assert len(rows) == 1
+    row = rows.iloc[0]
+    assert row["source_id"] == "hotel:node/99"
+    assert row["category"] == "hotel"
+    assert row["subcategory"] == "hotel"
+    assert row["address"] == "123 Broadway New York"
+    assert json.loads(row["attributes"])["tourism"] == "hotel"
+
+
 def test_osm_urgent_care_load_applies_manual_curation(tmp_path) -> None:
     snapshot = tmp_path / "urgent_care.geojson"
     snapshot.write_text(
@@ -852,9 +889,9 @@ def test_public_poi_pipeline_writes_wave1_sources(monkeypatch, tmp_path) -> None
     database_path = tmp_path / "pois.duckdb"
     report = run_public_poi(database_path=database_path)
 
-    assert report.dim_rows == 28
+    assert report.dim_rows == 29
     with DuckDBService(database_path, read_only=True) as duckdb_service:
         rows = duckdb_service.query_df(
             "SELECT COUNT(*) AS row_count FROM property_explorer_gold.dim_public_poi"
         )
-    assert rows["row_count"].iloc[0] == 28
+    assert rows["row_count"].iloc[0] == 29

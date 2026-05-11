@@ -25,6 +25,7 @@ def test_initialize_database_creates_expected_property_explorer_gold_tables(tmp_
         "dim_tract_to_nta",
         "dim_user_poi",
         "dim_user_poi_v2",
+        "dim_user_poi_v3",
         "fct_nta_features",
         "fct_property_context",
         "fct_tract_features",
@@ -50,7 +51,33 @@ def test_initialize_database_is_idempotent(tmp_path) -> None:
             """
         )["table_count"].iloc[0]
 
-    assert table_count == 13
+    assert table_count == 14
+
+
+def test_initialize_database_creates_expected_neighborhood_character_tables(tmp_path) -> None:
+    database_path = tmp_path / "nyc_property_finder.duckdb"
+
+    initialize_database(database_path)
+
+    with DuckDBService(database_path, read_only=True) as duckdb_service:
+        tables = duckdb_service.query_df(
+            """
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema = 'neighborhood_character_mart'
+            ORDER BY table_name
+            """
+        )["table_name"].tolist()
+
+    assert tables == [
+        "nta_boundaries",
+        "nta_category_controls",
+        "nta_category_density",
+        "nta_character_profile",
+        "nta_curated_poi_counts",
+        "nta_poi_assignments",
+        "nta_public_poi_counts",
+    ]
 
 
 def test_user_poi_v2_schema_is_source_aware(tmp_path) -> None:
@@ -105,6 +132,68 @@ def test_user_poi_v2_schema_is_source_aware(tmp_path) -> None:
         "editorial_summary_language_code",
         "price_level",
         "website_uri",
+    ]
+
+
+def test_user_poi_v3_schema_promotes_classified_fields(tmp_path) -> None:
+    database_path = tmp_path / "nyc_property_finder.duckdb"
+
+    initialize_database(database_path)
+
+    with DuckDBService(database_path, read_only=True) as duckdb_service:
+        columns = duckdb_service.query_df(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'property_explorer_gold'
+              AND table_name = 'dim_user_poi_v3'
+            ORDER BY ordinal_position
+            """
+        )["column_name"].tolist()
+
+    assert columns == [
+        "poi_id",
+        "source_system",
+        "source_systems",
+        "primary_source_system",
+        "source_record_id",
+        "source_list_names",
+        "category",
+        "subcategory",
+        "detail_level_3",
+        "categories",
+        "primary_category",
+        "subcategories",
+        "primary_subcategory",
+        "detail_level_3_values",
+        "primary_detail_level_3",
+        "name",
+        "input_title",
+        "note",
+        "tags",
+        "comment",
+        "source_url",
+        "google_place_id",
+        "match_status",
+        "address",
+        "lat",
+        "lon",
+        "has_place_details",
+        "details_fetched_at",
+        "rating",
+        "user_rating_count",
+        "business_status",
+        "editorial_summary",
+        "editorial_summary_language_code",
+        "price_level",
+        "website_uri",
+        "original_category",
+        "original_subcategory",
+        "original_detail_level_3",
+        "classification_method",
+        "classification_confidence",
+        "classification_score",
+        "classification_run_at",
     ]
 
 

@@ -59,14 +59,16 @@ The current Streamlit surface has two app layers:
 
 | App | Code | Required data | Current purpose |
 | --- | --- | --- | --- |
-| Neighborhood Explorer V2 (main focus) | `app/streamlit_app_v2.py`, `src/nyc_property_finder/app/base_map.py` | `dim_tract_to_nta`, `fct_tract_features`, `fct_nta_features`, `dim_user_poi_v2`, `dim_public_poi`, and `data/raw/geography/census_tracts.geojson` | Five-borough tract and neighborhood map with neighborhood-first defaults, curated/public POI overlays, and demographic metric review. |
+| Stoop Explore (main focus) | `app/stoop_explore.py`, `app/streamlit_app_v2.py`, `src/nyc_property_finder/app/base_map.py`, `src/nyc_property_finder/app/stoop_explore.py` | `dim_tract_to_nta`, `fct_tract_features`, `fct_nta_features`, `dim_user_poi_v2`, `dim_public_poi`, `neighborhood_character_mart.nta_category_controls`, `neighborhood_character_mart.nta_category_density`, `neighborhood_character_mart.nta_character_profile`, and `data/raw/geography/census_tracts.geojson` | Five-borough neighborhood explorer with curated/public POI overlays, configuration-backed category intelligence, and supporting demographic/context review. |
 | Neighborhood Data QA | `app/neighborhood_qa_app.py`, `src/nyc_property_finder/app/neighborhood_qa.py` | `dim_tract_to_nta`, `fct_tract_features`, `fct_nta_features`, `dim_user_poi_v2`, `dim_public_poi`, curated staging tables, and configured source paths | QA surface for table readiness, demographic coverage, curated/public POI inventory coverage, and freshness/source-path status. |
 | Property Explorer V1 (on ice) | `app/streamlit_app.py`, `src/nyc_property_finder/app/explorer.py` | `fct_property_context`, `dim_user_poi_v2`, `dim_subway_stop`, `fct_nta_features`, `fct_user_shortlist` | Listing map/list/detail workflow, score filters, POI/subway overlays, and local shortlist persistence. Paused while V2 is the active development focus. |
 
-Neighborhood Explorer is intentionally foundation-first: it can render boundaries
-even when demographic metric values are null. Neighborhood Data QA owns metric
-coverage and source-readiness review so missing Metro Deep Dive values are
-visible outside the main exploration surface.
+Stoop Explore is intentionally evidence-led: it can render boundaries even when
+demographic metric values are null, while neighborhood character claims come
+from the precomputed `neighborhood_character_mart` instead of runtime analysis.
+Neighborhood Data QA owns metric coverage and source-readiness review so
+missing Metro Deep Dive values stay visible outside the main exploration
+surface.
 
 ## Contract And DDL Change Checklist
 
@@ -102,7 +104,7 @@ the following in the same workstream:
 | `fct_nta_features` | This doc, Metro Deep Dive source notes | `sql/ddl/001_gold_tables.sql` | `build_neighborhood_features.py`, `sql/gold/fct_nta_features.sql` | One row per NTA; `borough` and `tract_count` populated; aggregation method documented; names present; null metric coverage visible in Neighborhood Data QA. | `tests/test_neighborhood_features.py`, `tests/test_base_map_app.py`, `tests/test_schema.py` |
 | `fct_property_context` | This doc, scoring config | `sql/ddl/001_gold_tables.sql` | `build_property_context.py`, scoring transforms | Context row count matches listings; tract/NTA joins valid; subway distance non-negative; POI JSON valid; scores are null for documented reasons or `0-100`. | `tests/test_property_context_pipeline.py`, `tests/test_property_explorer_app.py`, `tests/test_schema.py` |
 | `fct_user_shortlist` | This doc, app helper contract | `sql/ddl/001_gold_tables.sql` | `src/nyc_property_finder/app/explorer.py`, Streamlit actions | One current row per `user_id`/`property_id`; controlled status values; rebuilds do not replace user-authored rows. | `tests/test_property_explorer_app.py`, `tests/test_schema.py` |
-| Neighborhood Explorer app artifact | `docs/app/neighborhood_explorer_app.md`, this doc | N/A | `app/streamlit_app_v2.py`, `src/nyc_property_finder/app/base_map.py` | Five-borough boundaries render with or without metric values; default neighborhood-first UX, POI layer toggles, and tooltip counts work. | `tests/test_base_map_app.py` |
+| Stoop Explore app artifact | `docs/app/neighborhood_explorer_app.md`, this doc | N/A | `app/stoop_explore.py`, `app/streamlit_app_v2.py`, `src/nyc_property_finder/app/base_map.py`, `src/nyc_property_finder/app/stoop_explore.py` | Five-borough boundaries render with or without metric values; the right-side Explore intelligence panel reads from the mart; category-backed rankings, selected-neighborhood highlight, and POI layer toggles work. | `tests/test_base_map_app.py`, `tests/test_stoop_explore.py` |
 | Neighborhood Data QA app artifact | `docs/app/neighborhood_explorer_app.md`, this doc | N/A | `app/neighborhood_qa_app.py`, `src/nyc_property_finder/app/neighborhood_qa.py` | Table readiness, metric coverage, curated/public POI inventory coverage, and freshness/source-path status are visible outside the explorer. | `tests/test_neighborhood_qa.py` |
 
 ## MVP Table Status

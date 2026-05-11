@@ -46,6 +46,14 @@ questions. Dates use the local project date.
 | 2026-04-17 | Sprint 4 should implement the actual explorer as the first screen, not a marketing landing page. | The MVP value is reviewing properties immediately through filters, map, listing cards, and detail. | Codex |
 | 2026-04-17 | Sprint 4 should display neighborhood score/status as unavailable with current data. | Metro Deep Dive NYC tract metrics are currently null, so the app must not present a false neighborhood score. | Codex |
 | 2026-04-17 | Next major workstreams should be ACS neighborhood context, scoring redesign, Google Places cached POI enrichment, and StreetEasy scraping. | These address the largest remaining data quality, ranking credibility, personalization, and listing supply gaps after Sprint 4. | User/Codex |
+| 2026-05-08 | Stoop Explore and Stoop Search intelligence outputs should be pre-computed and stored in DuckDB. | Pipeline-time materialization gives the apps fast reads, a stable contract, reproducible validation, and simpler testing; richer runtime flexibility can wait until the metrics and label system are more mature. | User/Codex |
+| 2026-05-08 | Stoop Explore Character should use "known for" as the dominant MVP framing. | This keeps the product descriptive and evidence-led while still leaving room for more playful editorial copy on the surface. | User/Codex |
+| 2026-05-08 | Stoop Explore v1 should keep six initial story types, including quiet residential enclave. | The full set gives Explore a complete narrative frame, while quiet residential enclave can later lean more heavily on Search/Livability inputs. | User/Codex |
+| 2026-05-08 | Stoop Explore v1 category ranking should break ties using subcategory diversity after raw count. | Restaurant and other high-volume categories need a way to reward depth, not just mass. | User/Codex |
+| 2026-05-08 | Stoop Explore evidence thresholds should remain tunable during Sprint 2 validation. | Current category coverage is still uneven, so the minimum threshold should not be treated as fixed yet. | User/Codex |
+| 2026-05-08 | `music_venues` should stay hidden in the first public Explore category set. | It can remain a background signal, but it is not the right front-door neighborhood recommendation category for v1. | User/Codex |
+| 2026-05-08 | `museums` should stay live in Explore, and `art_galleries` should be a future separate category. | This keeps a useful cultural category live now while leaving room for better Chelsea-style arts coverage later. | User/Codex |
+| 2026-05-08 | Sprint 2 Explore intelligence is approved as good enough to ship with known blind spots. | The right next move is Sprint 3 surface build plus targeted source expansion, not another round of design-only refinement. | User/Codex |
 
 ## Proposed For Review
 
