@@ -14,10 +14,20 @@ def test_eater_registry_contains_locked_articles() -> None:
         "best-babka-rugelach-jewish-bakeries-nyc",
         "best-jewish-appetizing-shop-deli-nyc",
         "best-live-music-restaurants-bars-nyc",
+        "best-cocktail-bars-nyc-essential-bars-manhattan-brooklyn",
+        "nyc-best-new-cocktail-bars-heatmap",
+        "best-wine-lists-restaurants-bars-nyc",
+        "best-natural-wine-bars-nyc",
+        "best-hidden-bars-speakeasies-nyc",
+        "best-outdoor-bars-drinking-nyc",
         "best-new-york-restaurants-38-map",
     ]
     assert get_article("eater", "best-jewish-appetizing-shop-deli-nyc").subcategory == "jewish"
     assert get_article("eater", "best-live-music-restaurants-bars-nyc").detail_level_3 == "live_music"
+    assert get_article("eater", "best-cocktail-bars-nyc-essential-bars-manhattan-brooklyn").subcategory == "cocktail"
+    assert get_article("eater", "best-natural-wine-bars-nyc").subcategory == "wine_bar"
+    assert get_article("eater", "best-outdoor-bars-drinking-nyc").subcategory == "bars"
+    assert get_article("eater", "best-outdoor-bars-drinking-nyc").detail_level_3 == "outdoor"
     assert get_article("eater", "best-bakeries-nyc").status == "loaded"
 
 

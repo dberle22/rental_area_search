@@ -48,6 +48,78 @@ articles:
     status: loaded
 
   - publisher: Eater
+    article_slug: best-cocktail-bars-nyc-essential-bars-manhattan-brooklyn
+    article_title: The Best Cocktail Bars of New York City, According to Eater Editors
+    article_url: https://ny.eater.com/maps/best-cocktail-bars-nyc-essential-bars-manhattan-brooklyn
+    source_list_name: Eater NYC - Best Cocktail Bars
+    category: bars
+    subcategory: cocktail
+    detail_level_3: ""
+    capture_mode: parser
+    parser_name: eater
+    status: loaded
+
+  - publisher: Eater
+    article_slug: nyc-best-new-cocktail-bars-heatmap
+    article_title: The Best New Cocktail Bars in New York City, According to Eater Editors
+    article_url: https://ny.eater.com/maps/nyc-best-new-cocktail-bars-heatmap
+    source_list_name: Eater NYC - New Cocktail Bars
+    category: bars
+    subcategory: cocktail
+    detail_level_3: new_opening
+    capture_mode: parser
+    parser_name: eater
+    status: loaded
+
+  - publisher: Eater
+    article_slug: best-wine-lists-restaurants-bars-nyc
+    article_title: The Best NYC Places to Drink Wine
+    article_url: https://ny.eater.com/maps/best-wine-lists-restaurants-bars-nyc
+    source_list_name: Eater NYC - Best Places to Drink Wine
+    category: bars
+    subcategory: wine_bar
+    detail_level_3: ""
+    capture_mode: parser
+    parser_name: eater
+    status: loaded
+
+  - publisher: Eater
+    article_slug: best-natural-wine-bars-nyc
+    article_title: 15 Knockout Natural Wine Bars in NYC
+    article_url: https://ny.eater.com/maps/best-natural-wine-bars-nyc
+    source_list_name: Eater NYC - Natural Wine Bars
+    category: bars
+    subcategory: wine_bar
+    detail_level_3: natural_wine
+    capture_mode: parser
+    parser_name: eater
+    status: loaded
+
+  - publisher: Eater
+    article_slug: best-hidden-bars-speakeasies-nyc
+    article_title: Where to Find NYC’s Top Speakeasy Style Bars
+    article_url: https://ny.eater.com/maps/best-hidden-bars-speakeasies-nyc
+    source_list_name: Eater NYC - Speakeasy Bars
+    category: bars
+    subcategory: speakeasy
+    detail_level_3: ""
+    capture_mode: parser
+    parser_name: eater
+    status: loaded
+
+  - publisher: Eater
+    article_slug: best-outdoor-bars-drinking-nyc
+    article_title: 18 Ideal Outdoor Drinking Spots in NYC
+    article_url: https://ny.eater.com/maps/best-outdoor-bars-drinking-nyc
+    source_list_name: Eater NYC - Outdoor Drinking Spots
+    category: bars
+    subcategory: bars
+    detail_level_3: outdoor
+    capture_mode: parser
+    parser_name: eater
+    status: loaded
+
+  - publisher: Eater
     article_slug: best-new-york-restaurants-38-map
     article_title: 38 Best Restaurants
     article_url: https://ny.eater.com/maps/best-new-york-restaurants-38-map
@@ -240,6 +312,64 @@ articles:
     source_list_name: Backseat Driver - Menswear Guide
     category: shopping
     subcategory: menswear
+    detail_level_3: ""
+    capture_mode: manual_seed
+    parser_name: ""
+    status: planned
+
+  - publisher: Time Out
+    article_slug: 50-best-new-york-bars
+    article_title: The Best Bars in NYC Right Now
+    article_url: https://www.timeout.com/newyork/bars/50-best-new-york-bars
+    source_list_name: Time Out NYC - Best Bars
+    category: bars
+    subcategory: bars
+    detail_level_3: ""
+    capture_mode: parser
+    parser_name: timeout
+    status: planned
+
+  - publisher: Vogue
+    article_slug: best-rooftop-bars-in-nyc
+    article_title: The Best Rooftop Bars in New York City
+    article_url: https://www.vogue.com/article/best-rooftop-bars-in-nyc
+    source_list_name: Vogue - Best Rooftop Bars
+    category: bars
+    subcategory: bars
+    detail_level_3: rooftop
+    capture_mode: semi_manual
+    parser_name: ""
+    status: planned
+    semi_manual_hints:
+      preferred_input: html
+      extractor_family: vogue
+      infer_item_urls: true
+      min_candidate_rows: 10
+
+  - publisher: Vogue
+    article_slug: best-non-alcoholic-bars-new-york-city
+    article_title: The Best Bars for Non Alcoholic Drinks in New York City
+    article_url: https://www.vogue.com/article/best-non-alcoholic-bars-new-york-city
+    source_list_name: Vogue - Non Alcoholic Bars
+    category: bars
+    subcategory: bars
+    detail_level_3: non_alcoholic
+    capture_mode: semi_manual
+    parser_name: ""
+    status: planned
+    semi_manual_hints:
+      preferred_input: html
+      extractor_family: vogue
+      infer_item_urls: true
+      min_candidate_rows: 10
+
+  - publisher: The Infatuation
+    article_slug: the-nyc-bar-hit-list
+    article_title: "The NYC Bar Hit List: Great New Bars In NYC"
+    article_url: https://www.theinfatuation.com/new-york/guides/the-nyc-bar-hit-list
+    source_list_name: The Infatuation - NYC Bar Hit List
+    category: bars
+    subcategory: bars
     detail_level_3: ""
     capture_mode: manual_seed
     parser_name: ""

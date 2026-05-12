@@ -1,6 +1,6 @@
 # Stoop NYC — Backlog
 
-Last updated: 2026-05-08
+Last updated: 2026-05-12
 
 This is the active product backlog. Work is organized into sprints. Each task
 is labeled `[agent]`, `[you]`, or `[you+agent]`.
@@ -328,6 +328,82 @@ Reddit, and Substack.
 - [x] `[you]` Smoke-test the deployed app on desktop and mobile before public
   announcement.
 
+### Bars Coverage Expansion (Pre-Launch)
+
+The goal is to add one or more Eater bars articles to `dim_user_poi_v3` before
+Stoop Explore V1 goes live, so the `bars` category has credible coverage at
+launch. The pipeline already supports Eater articles end-to-end; this is a
+run-the-playbook task.
+
+**Step 1 — Register the articles**
+
+- [x] `[you]` Provide the Eater bars article URL(s) to register (e.g. "Best Bars
+  in NYC", "Best Wine Bars", etc.).
+- [x] `[agent]` Add each article to `config/curated_scrape_articles.yaml` with
+  `publisher: Eater`, `parser_name: eater`, `capture_mode: parser`,
+  `category: bars`, and the correct `subcategory` and `detail_level_3` values.
+  Mark `status: loaded` after successful ingestion.
+
+**Step 2 — Parse and export the normalized CSV**
+
+- [x] `[you]` Save the article HTML locally (or confirm the live URL is
+  fetchable).
+- [x] `[agent]` Run the export pipeline for each article:
+  ```
+  python -m nyc_property_finder.pipelines.export_curated_poi_eater_article \
+    --article-slug <slug> --html <saved.html>
+  ```
+  Output lands in `data/raw/scraped/normalized/` as
+  `bars_eater_<slug>_<date>.csv`.
+- [x] `[you]` Review the normalized CSV: check that venue names, addresses, and
+  descriptions look correct before hitting any APIs.
+
+**Step 3 — Resolve place IDs (Google Text Search)**
+
+- [x] `[agent]` Run `ingest_curated_poi_web_scrape` for each article CSV:
+  ```
+  python -m nyc_property_finder.pipelines.ingest_curated_poi_web_scrape \
+    --csv data/raw/scraped/normalized/bars_eater_<slug>_<date>.csv
+  ```
+  This calls the Google Places Text Search API to resolve each venue to a
+  `google_place_id` and writes results to the resolution cache. It also checks
+  for canonical duplicates against `dim_user_poi_v2` before making API calls.
+
+**Step 4 — Fetch place metadata (Google Place Details)**
+
+The same `ingest_curated_poi_web_scrape` call above also runs the Place Details
+step automatically after resolution — it fetches ratings, business status,
+editorial summaries, and coordinates for all newly resolved place IDs, then
+merges everything into `stg_user_poi_web_scrape` and rebuilds `dim_user_poi_v2`.
+
+- [x] `[you]` Review the QA output at `data/interim/google_places/web_scrape_qa.csv`
+  and the summary at `data/interim/google_places/web_scrape_summary.json`.
+  Confirm resolve rate and flag any low-confidence matches before proceeding.
+
+**Step 5 — Classify and promote to `dim_user_poi_v3`**
+
+- [x] `[agent]` Re-run the classification mart to score the new rows:
+  ```
+  python -m nyc_property_finder.pipelines.build_place_classification_mart
+  ```
+- [x] `[agent]` Rebuild `dim_user_poi_v3` with the promoted classifications:
+  ```
+  python -m nyc_property_finder.pipelines.build_curated_poi_v3
+  ```
+- [x] `[agent]` Rebuild the neighborhood character mart so the new bars coverage
+  flows into the intelligence rankings:
+  ```
+  python -m nyc_property_finder.pipelines.build_neighborhood_character_mart
+  ```
+- [x] `[you]` Spot-check bars coverage in the Stoop Explore map and intelligence
+  panel for 3–4 known neighborhoods (e.g. Williamsburg, LES, East Village)
+  before signing off.
+
+Completed 2026-05-12:
+- Registered and loaded 6 Eater bars articles from the attached CSV.
+- Exported 96 normalized source rows, resolved 96 of 96 rows to Google place IDs, and landed all 96 with coordinates.
+- Rebuilt `dim_user_poi_v3` and `neighborhood_character_mart`; bars now total 108 curated places citywide, with East Village, West Village, Williamsburg, Astoria (Central), and Lower East Side surfacing near the top of the bars rankings.
+
 ### Launch and Follow-Through
 
 - [ ] `[you+agent]` Draft the public positioning for launch: what Stoop Explore
@@ -566,6 +642,7 @@ These are agreed future work items that are out of scope for the current sprints
 | Shared shortlists / user identity | Requires auth backend. Design in Sprint 4, implement when Phase 2 ships. |
 | MotherDuck / hosted DuckDB | Not a blocker at current scale. Revisit when data volume or concurrent user load requires it. |
 | Public POI refresh cadence + incremental ingest design | New public POI categories should not require rerunning the full `ingest_public_poi` pipeline every time. Decide category-level incremental update path plus a separate cadence for full baseline refreshes of older public POI data. |
+| NYTimes Top 100 Restaurants ingest | Paywalled; HTML too large to auto-parse. First use case for the manual CSV upload path (Sprint 1 Crowd / Excel Upload). Ingest once that path is live. |
 | Walking-time proximity (vs. straight-line) | Post-Phase 2. Routing API adds complexity. |
 | Listing snapshot / price history | Post-Phase 2. Requires repeated scrape runs. |
 | Itinerary / day-plan generation | Far future. Ranked POI lists serve the near-term need. |
