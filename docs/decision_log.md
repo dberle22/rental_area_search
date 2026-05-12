@@ -54,6 +54,7 @@ questions. Dates use the local project date.
 | 2026-05-08 | `music_venues` should stay hidden in the first public Explore category set. | It can remain a background signal, but it is not the right front-door neighborhood recommendation category for v1. | User/Codex |
 | 2026-05-08 | `museums` should stay live in Explore, and `art_galleries` should be a future separate category. | This keeps a useful cultural category live now while leaving room for better Chelsea-style arts coverage later. | User/Codex |
 | 2026-05-08 | Sprint 2 Explore intelligence is approved as good enough to ship with known blind spots. | The right next move is Sprint 3 surface build plus targeted source expansion, not another round of design-only refinement. | User/Codex |
+| 2026-05-12 | Sprint 3 bars expansion should treat blank article-level bar subcategories as `bars` and use article theme in `detail_level_3` when obvious. | The current classification mart only reclassifies `mixed_restaurants`, so keeping null bar inputs as generic bars avoids speculative bar inference while still preserving useful themes like `outdoor`. | User/Codex |
 
 ## Proposed For Review
 
